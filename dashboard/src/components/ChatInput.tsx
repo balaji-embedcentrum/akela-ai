@@ -178,10 +178,10 @@ export function ChatInput({
                   position: att.preview ? 'absolute' : 'relative',
                   top: att.preview ? 2 : undefined,
                   right: att.preview ? 2 : undefined,
-                  background: 'rgba(0,0,0,0.6)',
+                  background: 'rgba(0,0,0,0.7)',
                   border: 'none',
                   borderRadius: '50%',
-                  width: 18, height: 18,
+                  width: 24, height: 24,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -191,7 +191,7 @@ export function ChatInput({
                   flexShrink: 0,
                 }}
               >
-                <X size={10} />
+                <X size={14} />
               </button>
             </div>
           ))}
@@ -202,6 +202,7 @@ export function ChatInput({
       <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
         {/* Attachment button */}
         <button
+          className="touch-target"
           onClick={() => fileInputRef.current?.click()}
           disabled={disabled}
           title="Attach files"
@@ -213,6 +214,7 @@ export function ChatInput({
             padding: '8px 4px',
             display: 'flex',
             alignItems: 'center',
+            justifyContent: 'center',
             transition: 'color 0.15s',
             flexShrink: 0,
           }}
@@ -258,12 +260,13 @@ export function ChatInput({
         {/* Send / Stop button */}
         {isActive && onStop ? (
           <button
+            className="touch-target"
             onClick={onStop}
             title="Stop"
             style={{
               padding: '10px 14px', borderRadius: 12, border: 'none',
               background: '#ef4444', color: '#fff',
-              cursor: 'pointer', display: 'flex', alignItems: 'center',
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
               transition: 'all 0.15s', flexShrink: 0,
             }}
           >
@@ -271,6 +274,7 @@ export function ChatInput({
           </button>
         ) : (
           <button
+            className="touch-target"
             onClick={handleSend}
             disabled={!hasContent || disabled}
             style={{
@@ -278,7 +282,7 @@ export function ChatInput({
               background: hasContent ? 'var(--accent)' : 'var(--bg-elevated)',
               color: hasContent ? '#fff' : 'var(--text-muted)',
               cursor: hasContent ? 'pointer' : 'default',
-              display: 'flex', alignItems: 'center',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
               transition: 'all 0.15s', flexShrink: 0,
             }}
           >

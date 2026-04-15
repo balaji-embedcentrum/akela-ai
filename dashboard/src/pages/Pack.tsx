@@ -114,7 +114,7 @@ function AgentCard({ agent, onDelete, onUpdate, readOnly = false }: {
             {rankEmoji[rank]} {rank.toUpperCase()}
           </span>
           {!readOnly && (
-            <button onClick={() => setEditing(!editing)} style={{
+            <button className="touch-target" onClick={() => setEditing(!editing)} style={{
               background: 'transparent', border: 'none', color: editing ? color : 'var(--text-muted)',
               cursor: 'pointer', padding: 4,
             }} title="Edit agent">
