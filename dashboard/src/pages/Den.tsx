@@ -859,7 +859,7 @@ export function Den() {
         </div>
 
         {/* Messages */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
+        <div className="den-messages-area" style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
           {messages.length === 0 && (
             <div style={{ textAlign: 'center', color: 'var(--text-muted)', marginTop: 60, fontSize: 14 }}>
               <div style={{ fontSize: 40, marginBottom: 12 }}>🐺</div>
@@ -974,7 +974,7 @@ export function Den() {
         )}
 
         {/* Input with hints overlay */}
-        <div style={{ position: 'relative' }}>
+        <div className="den-input-wrapper" style={{ position: 'relative' }}>
           {/* Persistent command usage hint bar */}
           {activeCommand && activeCommand.usage && slashHints.length === 0 && (
             <div style={{

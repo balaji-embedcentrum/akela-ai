@@ -6,7 +6,7 @@ import { useDmNotifications } from '../hooks/useDmNotifications'
 import {
   LayoutDashboard, MessageSquare, Crosshair, Users,
   Settings, LogOut, ExternalLink, ChevronLeft, ChevronRight,
-  ChevronDown, Plus,
+  ChevronDown, Plus, Menu, X,
 } from 'lucide-react'
 import api from '../api'
 
@@ -297,13 +297,30 @@ export function Sidebar() {
 
   return (
     <>
+      {/* Mobile hamburger — hidden on desktop via CSS */}
+      <button
+        className="sidebar-toggle"
+        onClick={() => setOpen(true)}
+        aria-label="Open navigation"
+      >
+        <Menu size={22} />
+      </button>
+
+      {/* Mobile backdrop — only rendered when drawer is open */}
+      {open && (
+        <div
+          className="sidebar-backdrop"
+          onClick={() => setOpen(false)}
+        />
+      )}
+
       <aside
         className={`sidebar ${open ? 'sidebar-open' : ''}`}
         style={{
           width: w, background: 'var(--bg-surface)',
           borderRight: '1px solid var(--border)',
           display: 'flex', flexDirection: 'column', height: '100vh',
-          flexShrink: 0, transition: 'width 0.2s ease', overflow: 'hidden',
+          flexShrink: 0, overflow: 'hidden',
         }}
       >
         {/* Logo row */}
@@ -326,6 +343,14 @@ export function Sidebar() {
               </div>
             )
           }
+          {/* Mobile close — hidden on desktop via CSS */}
+          <button
+            className="sidebar-close"
+            onClick={() => setOpen(false)}
+            aria-label="Close navigation"
+          >
+            <X size={20} />
+          </button>
         </div>
 
         {/* Project Switcher */}
