@@ -283,4 +283,21 @@ code, .mono { font-family: 'JetBrains Mono', monospace; }
   .dashboard-grid {
     grid-template-columns: 1fr !important;
   }
+
+  /*
+   * Tasks kanban: 5 columns at flex: 1 each would squeeze to ~70px on a
+   * 375px phone. Instead, let the container scroll horizontally and give
+   * each column a sensible minimum width with scroll-snap so swipes land
+   * cleanly on a column boundary.
+   */
+  .tasks-kanban {
+    overflow-x: auto !important;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+  }
+  .tasks-kanban > div {
+    flex: 0 0 auto !important;
+    min-width: 260px;
+    scroll-snap-align: start;
+  }
 }
