@@ -1,0 +1,170 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg-base: #0d0f14;
+  --bg-surface: #141720;
+  --bg-elevated: #1c2030;
+  --bg-hover: #242840;
+  --border: #2a2f45;
+  --border-light: #363d55;
+
+  --text-primary: #e8eaf6;
+  --text-secondary: #8b90a8;
+  --text-muted: #4a5068;
+
+  --alpha: #f5a623;
+  --alpha-dim: #3d2b0a;
+  --beta: #7c6af0;
+  --delta: #4a9eff;
+  --omega: #5eb89e;
+  --restricted: #e05252;
+
+  --online: #4caf50;
+  --offline: #555;
+  --busy: #f5a623;
+
+  --accent: #6b7af0;
+  --accent-dim: #1e2240;
+  --danger: #e05252;
+  --success: #4caf50;
+
+  --broadcast: #1a3a5c;
+  --broadcast-border: #4a9eff;
+  --mention: #2a1f08;
+  --mention-border: #f5a623;
+  --system-text: #5a6080;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Inter', sans-serif;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  height: 100vh;
+  overflow: hidden;
+}
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-base); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-light); }
+
+code, .mono { font-family: 'JetBrains Mono', monospace; }
+
+.pulse-online {
+  animation: pulse-green 2s infinite;
+}
+
+@keyframes pulse-green {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.4); }
+  50% { box-shadow: 0 0 0 6px rgba(76, 175, 80, 0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.fade-in { animation: fadeIn 0.2s ease; }
+
+/* ── Chat Markdown Styles ────────────────────────────────── */
+.chat-markdown p { margin: 0 0 8px 0; }
+.chat-markdown p:last-child { margin-bottom: 0; }
+.chat-markdown h1, .chat-markdown h2, .chat-markdown h3 {
+  margin: 12px 0 6px 0;
+  color: var(--accent);
+  font-weight: 600;
+}
+.chat-markdown h1 { font-size: 18px; }
+.chat-markdown h2 { font-size: 16px; }
+.chat-markdown h3 { font-size: 14px; }
+
+.chat-markdown code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  background: var(--bg-base);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #f0c674;
+}
+.chat-markdown pre {
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  margin: 8px 0;
+  overflow-x: auto;
+}
+.chat-markdown pre code {
+  background: none;
+  padding: 0;
+  color: var(--text-primary);
+}
+
+.chat-markdown ul, .chat-markdown ol {
+  margin: 6px 0;
+  padding-left: 20px;
+}
+.chat-markdown li { margin: 3px 0; }
+.chat-markdown li::marker { color: var(--accent); }
+
+.chat-markdown blockquote {
+  border-left: 3px solid var(--accent);
+  padding: 4px 12px;
+  margin: 8px 0;
+  color: var(--text-secondary);
+  background: var(--bg-base);
+  border-radius: 0 6px 6px 0;
+}
+
+.chat-markdown table {
+  border-collapse: collapse;
+  margin: 8px 0;
+  font-size: 13px;
+  width: 100%;
+}
+.chat-markdown th, .chat-markdown td {
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  text-align: left;
+}
+.chat-markdown th {
+  background: var(--bg-elevated);
+  color: var(--accent);
+  font-weight: 600;
+}
+.chat-markdown tr:nth-child(even) { background: rgba(255,255,255,0.02); }
+
+.chat-markdown strong { color: #fff; font-weight: 600; }
+.chat-markdown em { color: var(--text-secondary); }
+.chat-markdown a { color: var(--delta); text-decoration: none; }
+.chat-markdown a:hover { text-decoration: underline; }
+.chat-markdown hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 10px 0;
+}
+
+/* ── Retractable Sidebar (Mobile ≤768px) ─────────────────── */
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed !important;
+    left: 0;
+    top: 0;
+    z-index: 1002;
+    transform: translateX(-100%);
+  }
+  .sidebar.sidebar-open {
+    transform: translateX(0);
+  }
+  .sidebar-toggle {
+    display: flex !important;
+  }
+  .sidebar-backdrop {
+    display: block !important;
+  }
+  .sidebar-close {
+    display: block !important;
+  }
+}
