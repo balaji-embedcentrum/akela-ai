@@ -11,7 +11,7 @@ export function DetailPanel({ item, slug, agents, sprints, epics, huntProjectId,
   onClose: () => void; onSaved: () => void; onDeleted: () => void
 }) {
   return (
-    <div style={{
+    <div className="hunt-detail-panel" style={{
       width: 340, borderLeft: '1px solid var(--border)', background: 'var(--bg-surface)',
       display: 'flex', flexDirection: 'column', flexShrink: 0,
     }}>
