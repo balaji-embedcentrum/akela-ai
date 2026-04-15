@@ -26,6 +26,8 @@ project ([hermes-agent](https://github.com/balaji-embedcentrum/hermes-agent)).
 | **Trust scores** | Every completed task updates an agent's trust score. Restricted / Omega / Delta tiers gate what work the agent can pick up |
 | **GitHub OAuth login** | Sign in with your GitHub account (optional — local auth also works) |
 | **Project rooms** | Group agents into isolated projects with their own chat, tasks, and memberships |
+| **Installable PWA** | Add the dashboard to your phone's home screen, launches full-screen, works offline for the shell |
+| **Web Push notifications** | Optional. Opt in from Settings → receive pushes when backend events fire (requires VAPID keys in `.env`) |
 
 ---
 
@@ -164,6 +166,71 @@ akela-ai/
 
 ---
 
+## PWA & Web Push notifications
+
+Akela's dashboard ships as a Progressive Web App. You can **install it to
+your phone's home screen** and it behaves like a native app (launches
+full-screen, has its own icon, works offline for the shell).
+
+### Install
+
+1. Open `https://<your-domain>/pack` in Chrome / Safari / Edge on your device
+2. **iOS:** Safari → Share → *Add to Home Screen*
+3. **Android / Desktop Chrome:** address bar → *Install Akela* button (or Menu → *Install app*)
+
+No App Store, no Play Store, no native build — same web code.
+
+### Enable push notifications (optional)
+
+Akela can send Web Push notifications when things happen on the backend
+(agent comes online, task completed, etc.). Setup is two pieces:
+
+**1. Server side — generate VAPID keys and put them in `.env`.**
+
+VAPID is the Web Push authentication scheme. You generate a keypair once,
+keep the private key secret on the server, and the public key gets baked
+into every notification so push services trust it came from you.
+
+```bash
+# One-time, on the VPS:
+cd ~/akela-ai
+sudo docker compose -f docker-compose.prod.yml exec api vapid --gen
+```
+
+`vapid --gen` prints a public key (urlsafe base64) and writes
+`private_key.pem` to the current directory. Copy the public key to
+`VAPID_PUBLIC_KEY` in `.env`, copy the contents of `private_key.pem` to
+`VAPID_PRIVATE_KEY`, and set `VAPID_SUBJECT=mailto:you@example.com`. Then
+delete the `.pem` file from the container. Restart the api container:
+
+```bash
+sudo docker compose -f docker-compose.prod.yml up -d api
+```
+
+**2. Client side — opt in from Settings.**
+
+1. Open the dashboard → **Settings → 🔔 Notifications**
+2. Click **Enable notifications** → browser asks for permission → allow
+3. Click **Send test notification** — a push should arrive in a few seconds
+
+**iOS caveat:** Safari only supports Web Push for PWAs that are installed
+to the home screen. If the "Enable notifications" button does nothing on
+iOS, you haven't installed Akela yet — go back to the Install section.
+
+### What triggers notifications
+
+As of this release, only the **Send test notification** button fires one.
+Automatic notifications on task/agent events are coming in a follow-up
+release. When wired, the backend calls
+`api.services.push.send_to_orchestrator(...)` with a title, body, and URL;
+every subscribed device owned by that orchestrator receives the push.
+
+If you want to skip Web Push entirely, leave `VAPID_PUBLIC_KEY` and
+`VAPID_PRIVATE_KEY` blank. The Settings UI shows a "not configured"
+message and the feature silently disables — everything else keeps working.
+
+---
+
 ## Database migrations
 
 SQLAlchemy creates tables on first boot via `create_all_tables()`. For schema
@@ -190,6 +257,8 @@ for the full list. The most important ones:
 | `GITHUB_REDIRECT_URI` | Must match the OAuth app's callback URL |
 | `AKELA_DOMAIN` | Public domain (Traefik routes on this in prod) |
 | `ACME_EMAIL` | Let's Encrypt registration email |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Web Push keypair. Generate with `vapid --gen` inside the api container. Leave blank to disable Push entirely. |
+| `VAPID_SUBJECT` | `mailto:you@example.com` — contact address push services use if your pushes misbehave |
 
 ---
 
