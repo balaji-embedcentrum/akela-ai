@@ -122,6 +122,7 @@ export function MessageActions({
       >
         {/* Copy */}
         <button
+          className="touch-target"
           onClick={handleCopy}
           title="Copy message"
           style={{
@@ -145,6 +146,7 @@ export function MessageActions({
         {/* Regenerate — only for agent responses */}
         {isAgent && onRegenerate && (
           <button
+            className="touch-target"
             onClick={onRegenerate}
             title="Regenerate response"
             style={{
@@ -170,6 +172,7 @@ export function MessageActions({
         {isAgent && messageId && (
           <>
             <button
+              className="touch-target"
               onClick={() => handleFeedback('up')}
               title="Good response"
               style={{
@@ -188,6 +191,7 @@ export function MessageActions({
               <ThumbsUp size={12} fill={feedback === 'up' ? 'currentColor' : 'none'} />
             </button>
             <button
+              className="touch-target"
               onClick={() => handleFeedback('down')}
               title="Bad response"
               style={{

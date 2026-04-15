@@ -29,10 +29,13 @@ export function Login() {
     <div style={{
       minHeight: '100vh', background: 'var(--bg-base)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
+      padding: 16,
     }}>
       <div style={{
         background: 'var(--bg-surface)', border: '1px solid var(--border)',
-        borderRadius: 16, padding: 48, width: 380, textAlign: 'center',
+        borderRadius: 16, padding: 'clamp(24px, 6vw, 48px)',
+        width: '100%', maxWidth: 380, boxSizing: 'border-box',
+        textAlign: 'center',
       }}>
         <div style={{ fontSize: 64, marginBottom: 12 }}>🐺</div>
         <h1 style={{ fontSize: 28, fontWeight: 700, color: 'var(--alpha)', marginBottom: 4 }}>Akela</h1>

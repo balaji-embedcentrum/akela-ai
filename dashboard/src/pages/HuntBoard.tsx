@@ -68,7 +68,7 @@ export function HuntBoard({ tasks, flashedTasks, slug, selectedItem, onSelectIte
 
       {/* Task / sprint / epic / story detail overlay */}
       {selectedItem && (selectedItem.type === 'task' || selectedItem.type === 'new-sprint' || selectedItem.type === 'sprint' || selectedItem.type === 'epic' || selectedItem.type === 'story') && (
-        <div style={{ position: 'fixed', right: 0, top: 0, bottom: 0, zIndex: 300 }}>
+        <div className="hunt-detail-wrapper" style={{ position: 'fixed', right: 0, top: 0, bottom: 0, zIndex: 300, background: 'var(--bg-surface)' }}>
           <DetailPanel
             item={selectedItem} slug={slug}
             agents={agents} sprints={sprints} epics={epics}
