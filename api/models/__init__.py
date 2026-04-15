@@ -5,11 +5,12 @@ from api.models.feedback import MessageFeedback
 from api.models.meeting import Meeting, MeetingType, MeetingStatus
 from api.models.trust_event import TrustEvent, AgentTrustScore
 from api.models.conversation import Workspace, Conversation
+from api.models.push_subscription import PushSubscription
 
 __all__ = [
     "Orchestrator", "Agent", "AgentStatus", "AgentRank",
     "Message", "MessageFeedback", "Meeting", "MeetingType",
     "MeetingStatus", "TrustEvent", "AgentTrustScore",
-    "Workspace", "Conversation",
+    "Workspace", "Conversation", "PushSubscription",
 ]
 

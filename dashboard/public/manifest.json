@@ -1,0 +1,26 @@
+{
+  "name": "Akela",
+  "short_name": "Akela",
+  "description": "Run as one. Self-hosted control plane for your AI agent pack.",
+  "start_url": "/pack/",
+  "scope": "/pack/",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#0d0f14",
+  "background_color": "#0d0f14",
+  "categories": ["productivity", "developer"],
+  "icons": [
+    {
+      "src": "/pack/app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/pack/app-icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!--
+    Maskable icon: Android may crop this into a circle, squircle, or
+    rounded square. Keep the important content inside the 80% safe zone
+    (inset 51px on each side).
+  -->
+  <rect width="512" height="512" fill="#0d0f14"/>
+  <text
+    x="256"
+    y="256"
+    font-size="220"
+    text-anchor="middle"
+    dominant-baseline="central"
+    font-family="'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif"
+  >🐺</text>
+</svg>

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- Background: Akela dark surface -->
+  <rect width="512" height="512" rx="96" fill="#0d0f14"/>
+  <!-- Subtle inner glow ring in alpha orange -->
+  <rect x="24" y="24" width="464" height="464" rx="80" fill="none" stroke="#f5a623" stroke-width="3" opacity="0.4"/>
+  <!-- Wolf emoji — rendered as text so it inherits the system emoji font -->
+  <text
+    x="256"
+    y="256"
+    font-size="320"
+    text-anchor="middle"
+    dominant-baseline="central"
+    font-family="'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif"
+  >🐺</text>
+</svg>
