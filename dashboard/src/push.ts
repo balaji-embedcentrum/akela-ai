@@ -22,13 +22,18 @@ export interface PushStatus {
   subscribed: boolean        // there's an active subscription for this browser
 }
 
-function urlBase64ToUint8Array(base64String: string): Uint8Array {
+function urlBase64ToArrayBuffer(base64String: string): ArrayBuffer {
+  // Returns a plain ArrayBuffer (not a Uint8Array view) so the result is
+  // unambiguously a BufferSource at the TypeScript level. TS 5.7+ narrowed
+  // Uint8Array's backing buffer to ArrayBufferLike (ArrayBuffer | SharedArrayBuffer),
+  // which no longer satisfies pushManager.subscribe's applicationServerKey type.
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
   const raw = window.atob(base64)
-  const out = new Uint8Array(raw.length)
-  for (let i = 0; i < raw.length; ++i) out[i] = raw.charCodeAt(i)
-  return out
+  const buffer = new ArrayBuffer(raw.length)
+  const view = new Uint8Array(buffer)
+  for (let i = 0; i < raw.length; ++i) view[i] = raw.charCodeAt(i)
+  return buffer
 }
 
 export function checkSupport(): boolean {
@@ -112,7 +117,7 @@ export async function enableNotifications(): Promise<boolean> {
     const existing = await reg.pushManager.getSubscription()
     subscription = existing || await reg.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(publicKey),
+      applicationServerKey: urlBase64ToArrayBuffer(publicKey),
     })
   } catch (e) {
     console.warn('[akela] push subscribe failed:', e)
