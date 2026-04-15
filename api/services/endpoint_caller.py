@@ -59,8 +59,28 @@ def _strip_think(text: str) -> str:
     return _THINK_PATTERN.sub("", text).strip()
 
 
-async def build_history(room: str, agent_name: str, db: AsyncSession, limit: int = 20) -> list[dict]:
-    """Fetch last N messages and build clean alternating user/assistant pairs for this agent."""
+async def build_history(
+    room: str,
+    agent_name: str,
+    db: AsyncSession,
+    limit: int = 6,
+) -> list[dict]:
+    """Fetch last N messages in this room and build an OpenAI-compatible history.
+
+    - Messages from the orchestrator (``alpha``) become ``user`` turns.
+    - Messages from *this* agent become ``assistant`` turns.
+    - Messages from *other* agents in the same room (group chat case) are folded
+      into ``user`` turns prefixed with ``[AgentName]: ...`` so the current agent
+      can see what the rest of the pack has said.
+    - Consecutive same-role turns are merged by concatenation so the sequence
+      strictly alternates user/assistant, which OpenAI-compatible endpoints
+      require. This preserves content instead of dropping earlier messages.
+    - Leading assistant turns are dropped (OpenAI-compat expects user first).
+
+    The default window is intentionally small (6 messages). Larger windows
+    create a quadratic token-cost curve on long conversations because the
+    full prefix is re-sent on every turn.
+    """
     from sqlalchemy import select as sa_select
     result = await db.execute(
         sa_select(Message)
@@ -72,15 +92,27 @@ async def build_history(room: str, agent_name: str, db: AsyncSession, limit: int
 
     raw: list[dict] = []
     for m in msgs:
+        content = (m.content or "").strip()
+        if not content:
+            continue
         if m.sender_role == "alpha":
-            raw.append({"role": "user", "content": m.content or ""})
-        elif m.sender_role == "agent" and m.sender_name == agent_name:
-            raw.append({"role": "assistant", "content": m.content or ""})
+            raw.append({"role": "user", "content": content})
+        elif m.sender_role == "agent":
+            if m.sender_name == agent_name:
+                raw.append({"role": "assistant", "content": content})
+            else:
+                # Another agent speaking in a group room — fold into a user turn
+                # so the current agent sees the full conversation context.
+                raw.append({"role": "user", "content": f"[{m.sender_name}]: {content}"})
+        # system messages are intentionally skipped
 
+    # Merge consecutive same-role turns by concatenation (not replacement).
+    # This keeps multiple agents' messages visible in group rooms and preserves
+    # rapid-fire messages from the orchestrator in DMs.
     history: list[dict] = []
     for turn in raw:
         if history and history[-1]["role"] == turn["role"]:
-            history[-1] = turn
+            history[-1]["content"] = history[-1]["content"] + "\n\n" + turn["content"]
         else:
             history.append(turn)
 
@@ -355,9 +387,11 @@ async def handle_agent_notify(
         json.dumps({"type": "typing", "agent_name": agent.name, "room": room}),
     )
 
-    # History for DM rooms only
+    # Build history for any non-meeting room — DMs and project/group rooms
+    # both benefit from context. Meetings are one-shot broadcast prompts and
+    # intentionally get no prior context.
     history = None
-    if not meeting_id and room.startswith("dm:"):
+    if not meeting_id:
         history = await build_history(room, agent.name, db)
 
     full_text = ""
