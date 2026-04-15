@@ -274,4 +274,13 @@ code, .mono { font-family: 'JetBrains Mono', monospace; }
     border-left: none !important;
     height: 100%;
   }
+
+  /*
+   * Dashboard grid: desktop is a 1fr + 320px 2-column layout. On mobile the
+   * 320px right rail squeezed the left content to ~55px, so stack as a single
+   * column and let the pack roster flow below projects.
+   */
+  .dashboard-grid {
+    grid-template-columns: 1fr !important;
+  }
 }
