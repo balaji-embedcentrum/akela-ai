@@ -179,7 +179,7 @@ function AgentCard({ agent, onDelete, onUpdate, readOnly = false }: {
       {/* Edit panel */}
       {editing && (
         <div style={{ marginTop: 8 }}>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+          <div className="form-row-stack" style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 4 }}>DISPLAY NAME</div>
               <input value={editDisplayName} onChange={e => setEditDisplayName(e.target.value)} style={inputStyle} />
@@ -198,7 +198,7 @@ function AgentCard({ agent, onDelete, onUpdate, readOnly = false }: {
             <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 4 }}>SKILLS (comma-separated)</div>
             <input value={editSkills} onChange={e => setEditSkills(e.target.value)} style={inputStyle} />
           </div>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
+          <div className="form-row-stack" style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
             <div style={{ flex: 2 }}>
               <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 4 }}>ENDPOINT URL</div>
               <input value={editEndpoint} onChange={e => setEditEndpoint(e.target.value)} placeholder="http://..." style={inputStyle} />
@@ -219,7 +219,7 @@ function AgentCard({ agent, onDelete, onUpdate, readOnly = false }: {
             <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 4 }}>BEARER TOKEN <span style={{ fontWeight: 400 }}>(optional — sent as Authorization header)</span></div>
             <input value={editBearerToken} onChange={e => setEditBearerToken(e.target.value)} placeholder="Leave blank if not required" type="password" style={inputStyle} />
           </div>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+          <div className="form-row-stack" style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 4 }}>MODEL</div>
               <input value={editModel} onChange={e => setEditModel(e.target.value)} placeholder="e.g. MiniMax-M2.7" style={inputStyle} />

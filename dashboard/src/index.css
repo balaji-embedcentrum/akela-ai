@@ -300,4 +300,21 @@ code, .mono { font-family: 'JetBrains Mono', monospace; }
     min-width: 260px;
     scroll-snap-align: start;
   }
+
+  /*
+   * Form row utility — stacks a horizontal flex row of form fields into
+   * a vertical column on mobile. Hardcoded child widths (e.g. width: 100
+   * for a slug/rank select) get overridden to 100% so every field uses the
+   * full width of the screen. Used in Pack.tsx edit panel and Settings.tsx
+   * project form.
+   */
+  .form-row-stack {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+  .form-row-stack > div {
+    width: 100% !important;
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+  }
 }
