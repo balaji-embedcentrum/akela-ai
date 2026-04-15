@@ -213,7 +213,7 @@ export function Dashboard() {
         Pack overview · all projects
       </p>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 24 }}>
+      <div className="dashboard-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 24 }}>
 
         {/* Left: all projects */}
         <div>

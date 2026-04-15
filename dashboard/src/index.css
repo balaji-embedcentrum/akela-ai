@@ -274,4 +274,68 @@ code, .mono { font-family: 'JetBrains Mono', monospace; }
     border-left: none !important;
     height: 100%;
   }
+
+  /*
+   * Dashboard grid: desktop is a 1fr + 320px 2-column layout. On mobile the
+   * 320px right rail squeezed the left content to ~55px, so stack as a single
+   * column and let the pack roster flow below projects.
+   */
+  .dashboard-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /*
+   * Tasks kanban: 5 columns at flex: 1 each would squeeze to ~70px on a
+   * 375px phone. Instead, let the container scroll horizontally and give
+   * each column a sensible minimum width with scroll-snap so swipes land
+   * cleanly on a column boundary.
+   */
+  .tasks-kanban {
+    overflow-x: auto !important;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+  }
+  .tasks-kanban > div {
+    flex: 0 0 auto !important;
+    min-width: 260px;
+    scroll-snap-align: start;
+  }
+
+  /*
+   * Form row utility — stacks a horizontal flex row of form fields into
+   * a vertical column on mobile. Hardcoded child widths (e.g. width: 100
+   * for a slug/rank select) get overridden to 100% so every field uses the
+   * full width of the screen. Used in Pack.tsx edit panel and Settings.tsx
+   * project form.
+   */
+  .form-row-stack {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+  .form-row-stack > div {
+    width: 100% !important;
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+  }
+
+  /*
+   * Meetings page: desktop is a 2-column layout with a 280px left config
+   * list and a flex: 1 right detail panel. On mobile, stack them and let
+   * the whole page scroll vertically so both list and detail are usable.
+   */
+  .meetings-container {
+    flex-direction: column !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+  }
+  .meetings-left-panel {
+    width: 100% !important;
+    border-right: none !important;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0 !important;
+  }
+  .meetings-right-panel {
+    padding: 16px !important;
+    flex-shrink: 0 !important;
+  }
 }

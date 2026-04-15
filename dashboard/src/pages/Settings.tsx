@@ -74,7 +74,7 @@ function ProjectSettings() {
 
   return (
     <div>
-      <div style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
+      <div className="form-row-stack" style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>PROJECT NAME</div>
           <input

@@ -268,7 +268,7 @@ export function Tasks() {
           <div style={{ fontSize: 15 }}>Select a project in the sidebar to see the prey.</div>
         </div>
       ) : (
-        <div style={{ flex: 1, display: 'flex', gap: 0, overflow: 'hidden' }}>
+        <div className="tasks-kanban" style={{ flex: 1, display: 'flex', gap: 0, overflow: 'hidden' }}>
           {WOLF_COLUMNS.map((col, i) => {
             const colTasks = tasks.filter(t => t.status === col.status)
             return (
