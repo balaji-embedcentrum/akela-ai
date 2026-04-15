@@ -1,0 +1,107 @@
+version: '3.9'
+# ============================================================
+# Akela — Local Development Docker Compose
+# For production, use docker-compose.prod.yml (Traefik + TLS).
+# ============================================================
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: akela
+      POSTGRES_USER: ${POSTGRES_USER:-akela}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-akela}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-akela}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - akela-net
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - akela-net
+
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-akela}:${POSTGRES_PASSWORD:-akela}@postgres:5432/akela
+      REDIS_URL: redis://redis:6379
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-change-me}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-alpha}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-changeme}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      GITHUB_REDIRECT_URI: ${GITHUB_REDIRECT_URI:-http://localhost:8200/akela-api/auth/github/callback}
+    ports:
+      - "8200:8200"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - akela-net
+
+  worker:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-akela}:${POSTGRES_PASSWORD:-akela}@postgres:5432/akela
+      REDIS_URL: redis://redis:6379
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-change-me}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - akela-net
+
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: /akela-api
+    ports:
+      - "8201:80"
+    depends_on:
+      - api
+    networks:
+      - akela-net
+
+  landing:
+    build:
+      context: ./landing
+      dockerfile: Dockerfile
+    ports:
+      - "8202:80"
+    networks:
+      - akela-net
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  akela-net:
+    driver: bridge
