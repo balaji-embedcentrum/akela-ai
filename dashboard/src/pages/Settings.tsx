@@ -1,8 +1,16 @@
 import { useStore } from '../store'
 import type { Project, Agent } from '../store'
-import { Copy, Check, Save, Trash2 } from 'lucide-react'
+import { Copy, Check, Save, Trash2, Bell, BellOff } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import api from '../api'
+import {
+  checkSupport as checkPushSupport,
+  getStatus as getPushStatus,
+  enableNotifications,
+  disableNotifications,
+  sendTestNotification,
+  type PushStatus,
+} from '../push'
 
 const COLORS = [
   '#4a9eff', '#f5a623', '#4caf50', '#f44336', '#9c27b0',
@@ -207,6 +215,159 @@ function ProjectSettings() {
   )
 }
 
+function NotificationSettings() {
+  const [status, setStatus] = useState<PushStatus | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [testResult, setTestResult] = useState<'idle' | 'sent' | 'failed'>('idle')
+
+  const refresh = async () => setStatus(await getPushStatus())
+
+  useEffect(() => {
+    if (!checkPushSupport()) {
+      setStatus({
+        supported: false, serverEnabled: false,
+        permission: 'unsupported', subscribed: false,
+      })
+      return
+    }
+    refresh()
+  }, [])
+
+  const handleEnable = async () => {
+    setBusy(true)
+    const ok = await enableNotifications()
+    setBusy(false)
+    if (!ok) {
+      alert('Could not enable notifications. Check that:\n' +
+            '• You granted permission when your browser asked\n' +
+            '• The backend has VAPID keys configured (see SECURITY.md)\n' +
+            '• You are on HTTPS')
+    }
+    await refresh()
+  }
+
+  const handleDisable = async () => {
+    setBusy(true)
+    await disableNotifications()
+    setBusy(false)
+    setTestResult('idle')
+    await refresh()
+  }
+
+  const handleTest = async () => {
+    setBusy(true)
+    const ok = await sendTestNotification()
+    setBusy(false)
+    setTestResult(ok ? 'sent' : 'failed')
+    setTimeout(() => setTestResult('idle'), 3000)
+  }
+
+  if (!status) {
+    return (
+      <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>Checking browser support…</div>
+    )
+  }
+
+  if (!status.supported) {
+    return (
+      <div style={{ color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.6 }}>
+        Your browser doesn't support Web Push notifications. Try a recent version of
+        Chrome, Edge, Firefox, or Safari 16.4+ on iOS (and install Akela to your home
+        screen first).
+      </div>
+    )
+  }
+
+  if (!status.serverEnabled) {
+    return (
+      <div style={{ color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.6 }}>
+        Web Push is not configured on this server — an administrator needs to add VAPID
+        keys to <code style={{ color: 'var(--accent)' }}>.env</code>. See the README
+        section on Web Push for the <code style={{ color: 'var(--accent)' }}>vapid --gen</code> command.
+      </div>
+    )
+  }
+
+  if (status.permission === 'denied') {
+    return (
+      <div style={{ color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.6 }}>
+        Notifications are blocked for this site. Unblock them in your browser's site
+        settings and reload this page.
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14,
+        padding: '10px 14px', background: 'var(--bg-elevated)',
+        border: '1px solid var(--border)', borderRadius: 8,
+      }}>
+        {status.subscribed
+          ? <Bell size={18} color="var(--success)" />
+          : <BellOff size={18} color="var(--text-muted)" />
+        }
+        <div style={{ flex: 1, fontSize: 13 }}>
+          {status.subscribed
+            ? <span>Notifications are <strong style={{ color: 'var(--success)' }}>enabled</strong> on this device.</span>
+            : <span>Notifications are <strong>off</strong> on this device.</span>
+          }
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        {!status.subscribed ? (
+          <button
+            onClick={handleEnable}
+            disabled={busy}
+            style={{
+              padding: '10px 16px', background: 'var(--accent)', border: 'none',
+              borderRadius: 6, color: '#fff', fontSize: 13, fontWeight: 600,
+              cursor: busy ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', gap: 8,
+            }}
+          >
+            <Bell size={14} /> Enable notifications
+          </button>
+        ) : (
+          <>
+            <button
+              onClick={handleTest}
+              disabled={busy}
+              style={{
+                padding: '10px 16px', background: 'var(--bg-elevated)',
+                border: '1px solid var(--border)', borderRadius: 6,
+                color: 'var(--text-primary)', fontSize: 13, fontWeight: 600,
+                cursor: busy ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', gap: 8,
+              }}
+            >
+              {testResult === 'sent' ? <Check size={14} color="var(--success)" /> : <Bell size={14} />}
+              {testResult === 'sent' ? 'Test sent' : testResult === 'failed' ? 'Test failed' : 'Send test notification'}
+            </button>
+            <button
+              onClick={handleDisable}
+              disabled={busy}
+              style={{
+                padding: '10px 16px', background: 'rgba(244,67,54,0.1)',
+                border: '1px solid rgba(244,67,54,0.3)', borderRadius: 6,
+                color: '#f44336', fontSize: 13, fontWeight: 600,
+                cursor: busy ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', gap: 8,
+              }}
+            >
+              <BellOff size={14} /> Disable
+            </button>
+          </>
+        )}
+      </div>
+
+      <p style={{ marginTop: 14, fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.6 }}>
+        Notifications arrive on whichever device you enable them on. On iOS, install
+        Akela to your home screen first — Safari only supports Web Push for installed PWAs.
+      </p>
+    </div>
+  )
+}
+
 export function Settings() {
   const { user } = useStore()
   const [copied, setCopied] = useState(false)
@@ -233,6 +394,17 @@ export function Settings() {
           📁 Project Settings
         </h2>
         <ProjectSettings />
+      </div>
+
+      {/* Notifications */}
+      <div style={{
+        background: 'var(--bg-surface)', border: '1px solid var(--border)',
+        borderRadius: 12, padding: 24, marginBottom: 20,
+      }}>
+        <h2 style={{ fontSize: 15, fontWeight: 600, marginBottom: 16 }}>
+          🔔 Notifications
+        </h2>
+        <NotificationSettings />
       </div>
 
       {/* Alpha credentials */}
