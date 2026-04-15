@@ -67,14 +67,21 @@ async def build_history(
 ) -> list[dict]:
     """Fetch last N messages in this room and build an OpenAI-compatible history.
 
-    - Messages from the orchestrator (``alpha``) become ``user`` turns.
-    - Messages from *this* agent become ``assistant`` turns.
-    - Messages from *other* agents in the same room (group chat case) are folded
-      into ``user`` turns prefixed with ``[AgentName]: ...`` so the current agent
-      can see what the rest of the pack has said.
+    Each agent lives in its own private bubble per room: it sees messages
+    from the orchestrator (``alpha``) and from its own prior turns, but never
+    from other agents in the same room. This is intentional — if an agent
+    saw other agents' messages, it would reference or @-mention them and
+    trigger runaway cross-agent chatter. Dispatching decides who gets to
+    speak; history only reconstructs what the called agent already lived.
+
+    - Messages from ``alpha`` → ``user`` turns (even if addressed at another
+      agent in the room — the orchestrator's voice is shared context).
+    - Messages from *this* agent → ``assistant`` turns.
+    - Messages from *other* agents → skipped entirely.
     - Consecutive same-role turns are merged by concatenation so the sequence
       strictly alternates user/assistant, which OpenAI-compatible endpoints
-      require. This preserves content instead of dropping earlier messages.
+      require. This preserves content instead of dropping earlier messages
+      (the old replace-on-collision logic lost rapid-fire orchestrator turns).
     - Leading assistant turns are dropped (OpenAI-compat expects user first).
 
     The default window is intentionally small (6 messages). Larger windows
@@ -97,18 +104,13 @@ async def build_history(
             continue
         if m.sender_role == "alpha":
             raw.append({"role": "user", "content": content})
-        elif m.sender_role == "agent":
-            if m.sender_name == agent_name:
-                raw.append({"role": "assistant", "content": content})
-            else:
-                # Another agent speaking in a group room — fold into a user turn
-                # so the current agent sees the full conversation context.
-                raw.append({"role": "user", "content": f"[{m.sender_name}]: {content}"})
-        # system messages are intentionally skipped
+        elif m.sender_role == "agent" and m.sender_name == agent_name:
+            raw.append({"role": "assistant", "content": content})
+        # Other agents' messages and system messages are intentionally skipped.
 
     # Merge consecutive same-role turns by concatenation (not replacement).
-    # This keeps multiple agents' messages visible in group rooms and preserves
-    # rapid-fire messages from the orchestrator in DMs.
+    # This preserves rapid-fire messages from the orchestrator instead of
+    # dropping all but the last one.
     history: list[dict] = []
     for turn in raw:
         if history and history[-1]["role"] == turn["role"]:
