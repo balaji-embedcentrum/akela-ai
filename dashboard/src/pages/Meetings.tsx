@@ -176,9 +176,9 @@ export function Meetings() {
   }
 
   return (
-    <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
+    <div className="meetings-container" style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
       {/* ── Left panel: standup config list ── */}
-      <div style={{
+      <div className="meetings-left-panel" style={{
         width: 280, borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column',
         background: 'var(--bg-surface)', flexShrink: 0,
       }}>
@@ -276,7 +276,7 @@ export function Meetings() {
       </div>
 
       {/* ── Right panel: config detail + run history ── */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: 28 }}>
+      <div className="meetings-right-panel" style={{ flex: 1, overflowY: 'auto', padding: 28 }}>
         {!selected ? (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)' }}>
             <Mic2 size={40} style={{ marginBottom: 12, opacity: 0.3 }} />

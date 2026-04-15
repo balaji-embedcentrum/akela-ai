@@ -317,4 +317,25 @@ code, .mono { font-family: 'JetBrains Mono', monospace; }
     flex: 1 1 auto !important;
     min-width: 0 !important;
   }
+
+  /*
+   * Meetings page: desktop is a 2-column layout with a 280px left config
+   * list and a flex: 1 right detail panel. On mobile, stack them and let
+   * the whole page scroll vertically so both list and detail are usable.
+   */
+  .meetings-container {
+    flex-direction: column !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+  }
+  .meetings-left-panel {
+    width: 100% !important;
+    border-right: none !important;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0 !important;
+  }
+  .meetings-right-panel {
+    padding: 16px !important;
+    flex-shrink: 0 !important;
+  }
 }
