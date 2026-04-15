@@ -7,7 +7,7 @@ import redis.asyncio as aioredis
 
 from api.config import get_settings
 from api.db.session import create_all_tables
-from api.routers import auth, orchestrators, agents, chat, meetings, trust, conversations, hunt, bridge, projects
+from api.routers import auth, orchestrators, agents, chat, meetings, trust, conversations, hunt, bridge, projects, push
 
 settings = get_settings()
 
@@ -54,6 +54,7 @@ app.include_router(conversations.router)
 app.include_router(hunt.router)
 app.include_router(bridge.router)
 app.include_router(projects.router)
+app.include_router(push.router)
 
 
 @app.get("/")

@@ -27,6 +27,18 @@ class Settings(BaseSettings):
     trust_omega_max: float = 60.0
     trust_delta_max: float = 85.0
 
+    # Web Push (VAPID). Generate a keypair with:
+    #   python -c "from py_vapid import Vapid; v = Vapid(); v.generate_keys(); \
+    #     print('private:', v.private_key.private_numbers().private_value); \
+    #     print('public:', v.public_key_urlsafe_base64().decode())"
+    # Or simpler, use the 'vapid' CLI that ships with py-vapid:
+    #   vapid --gen
+    # Leave blank to disable Web Push entirely — the /push/* endpoints will
+    # return 503 and the frontend hides the notification opt-in.
+    vapid_public_key: str = ""
+    vapid_private_key: str = ""
+    vapid_subject: str = "mailto:admin@example.com"
+
     class Config:
         env_file = ".env"
         extra = "ignore"
