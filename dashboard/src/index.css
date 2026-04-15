@@ -146,25 +146,99 @@ code, .mono { font-family: 'JetBrains Mono', monospace; }
   margin: 10px 0;
 }
 
-/* ── Retractable Sidebar (Mobile ≤768px) ─────────────────── */
+/* ── Mobile navigation — base rules ──────────────────────── */
+/*
+ * Hidden on desktop, revealed inside the mobile media query below.
+ * Keeping the defaults here so the cascade is predictable and we don't
+ * rely on CSS-class-without-base-rule.
+ */
+.sidebar {
+  transition: transform 0.25s ease, width 0.2s ease;
+}
+
+.sidebar-toggle {
+  display: none;
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  z-index: 1003;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+.sidebar-toggle:active { background: var(--bg-hover); }
+
+.sidebar-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1001;
+}
+
+.sidebar-close {
+  display: none;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+  min-width: 44px;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+}
+.sidebar-close:active { color: var(--text-primary); }
+
+/* ── Den chat area — base rules (no-op on desktop) ───────── */
+.den-input-wrapper {
+  position: relative;
+}
+.den-messages-area {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* ── Retractable Sidebar + Den input fix (≤768px) ────────── */
 @media (max-width: 768px) {
   .sidebar {
     position: fixed !important;
     left: 0;
     top: 0;
+    height: 100dvh;
     z-index: 1002;
     transform: translateX(-100%);
   }
   .sidebar.sidebar-open {
     transform: translateX(0);
   }
-  .sidebar-toggle {
-    display: flex !important;
+  .sidebar-toggle { display: flex !important; }
+  .sidebar-backdrop { display: block !important; }
+  .sidebar-close { display: flex !important; }
+
+  /*
+   * Chat input: pin to the bottom of the visual viewport so the iOS keyboard
+   * doesn't hide it. Messages get extra bottom padding to compensate.
+   * env(safe-area-inset-bottom) handles the iPhone home indicator.
+   */
+  .den-input-wrapper {
+    position: fixed !important;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: var(--bg-surface);
+    border-top: 1px solid var(--border);
+    padding-bottom: env(safe-area-inset-bottom);
+    z-index: 100;
   }
-  .sidebar-backdrop {
-    display: block !important;
-  }
-  .sidebar-close {
-    display: block !important;
+  .den-messages-area {
+    padding-bottom: 110px !important;
   }
 }
