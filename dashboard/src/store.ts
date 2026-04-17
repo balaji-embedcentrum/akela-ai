@@ -98,6 +98,11 @@ interface Stats {
   done_tasks: number
 }
 
+export interface LocalAgentConfig {
+  localEndpointUrl: string
+  localBearerToken?: string
+}
+
 interface Store {
   user: User | null
   token: string | null
@@ -129,6 +134,9 @@ interface Store {
   clearUnread: (agentName: string) => void
   lastTaskUpdate: number
   notifyTaskUpdate: () => void
+  // Local agent configs — browser-direct endpoints stored in localStorage
+  localAgentConfigs: Record<string, LocalAgentConfig>
+  setLocalAgentConfig: (agentName: string, config: LocalAgentConfig | null) => void
 }
 
 export const useStore = create<Store>((set) => ({
@@ -179,5 +187,18 @@ export const useStore = create<Store>((set) => ({
   }),
   lastTaskUpdate: 0,
   notifyTaskUpdate: () => set({ lastTaskUpdate: Date.now() }),
+  // Local agent configs — persisted in localStorage, never sent to the server.
+  // The server can't reach localhost endpoints anyway; this is client-only state.
+  localAgentConfigs: JSON.parse(localStorage.getItem('akela_local_agents') || '{}'),
+  setLocalAgentConfig: (agentName, config) => set((s) => {
+    const next = { ...s.localAgentConfigs }
+    if (config) {
+      next[agentName] = config
+    } else {
+      delete next[agentName]
+    }
+    localStorage.setItem('akela_local_agents', JSON.stringify(next))
+    return { localAgentConfigs: next }
+  }),
 }))
 
