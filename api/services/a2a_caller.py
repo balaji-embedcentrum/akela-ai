@@ -357,12 +357,15 @@ def _extract_tool_call_from_artifact(artifact: dict) -> str:
 _publish_words = BaseAgentCaller.publish_words
 
 
-async def ping_a2a_endpoint(endpoint_url: str) -> bool:
+async def ping_a2a_endpoint(endpoint_url: str, bearer_token: str | None = None) -> bool:
     base = endpoint_url.rstrip("/")
+    headers: dict[str, str] = {}
+    if bearer_token:
+        headers["Authorization"] = f"Bearer {bearer_token}"
     for path in ["/.well-known/agent-card.json", "/.well-known/agent.json"]:
         try:
             async with httpx.AsyncClient(timeout=8.0) as client:
-                resp = await client.get(f"{base}{path}")
+                resp = await client.get(f"{base}{path}", headers=headers)
                 if resp.status_code < 500:
                     return True
         except Exception:
