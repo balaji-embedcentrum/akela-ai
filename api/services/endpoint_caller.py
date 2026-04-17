@@ -133,6 +133,7 @@ async def call_endpoint_streaming(
     history: list[dict] | None = None,
     orchestrator_id: str = "",
     attachments: list[dict] | None = None,
+    bearer_token: str | None = None,
 ) -> tuple[str, dict, str]:
     """
     Call OpenAI-compatible /v1/chat/completions with stream=True.
@@ -179,8 +180,12 @@ async def call_endpoint_streaming(
     # Track announced tool calls by index (standard OpenAI format)
     _announced_tool_idxs: set[int] = set()
 
+    req_headers: dict[str, str] = {"Content-Type": "application/json"}
+    if bearer_token:
+        req_headers["Authorization"] = f"Bearer {bearer_token}"
+
     async with httpx.AsyncClient(timeout=120.0) as client:
-        async with client.stream("POST", url, json=payload, headers={"Content-Type": "application/json"}) as resp:
+        async with client.stream("POST", url, json=payload, headers=req_headers) as resp:
             resp.raise_for_status()
             async for line in resp.aiter_lines():
                 if not line.startswith("data:"):
@@ -414,7 +419,7 @@ async def handle_agent_notify(
             # openai-compatible (Hermes gateway, LiteLLM, etc.)
             full_text, meta, stream_id = await call_endpoint_streaming(
                 agent.endpoint_url, content, agent.name, room, redis_client, history, orchestrator_id,
-                attachments=attachments,
+                attachments=attachments, bearer_token=agent.bearer_token,
             )
     except asyncio.CancelledError:
         logger.info(f"endpoint_caller: streaming cancelled for agent {agent_id} in room {room}")
@@ -529,15 +534,18 @@ async def get_real_model_name(endpoint_url: str) -> str:
     return ""
 
 
-async def ping_endpoint(endpoint_url: str, protocol: AgentProtocol = AgentProtocol.openai) -> bool:
+async def ping_endpoint(endpoint_url: str, protocol: AgentProtocol = AgentProtocol.openai, bearer_token: str | None = None) -> bool:
     """Check if an endpoint is reachable."""
     if protocol == AgentProtocol.a2a:
         from api.services.a2a_caller import ping_a2a_endpoint
-        return await ping_a2a_endpoint(endpoint_url)
+        return await ping_a2a_endpoint(endpoint_url, bearer_token=bearer_token)
     try:
         url = f"{endpoint_url.rstrip('/')}/v1/models"
+        headers: dict[str, str] = {}
+        if bearer_token:
+            headers["Authorization"] = f"Bearer {bearer_token}"
         async with httpx.AsyncClient(timeout=8.0) as client:
-            resp = await client.get(url)
+            resp = await client.get(url, headers=headers)
             return resp.status_code < 500
     except Exception:
         return False
@@ -554,7 +562,7 @@ async def start_health_checker(db_factory, redis_client):
                 for agent in agents:
                     if not agent.endpoint_url or agent.endpoint_url.startswith("fb:"):
                         continue
-                    reachable = await ping_endpoint(agent.endpoint_url, agent.protocol)
+                    reachable = await ping_endpoint(agent.endpoint_url, agent.protocol, bearer_token=agent.bearer_token)
                     new_status = AgentStatus.online if reachable else AgentStatus.offline
                     if agent.status != new_status or (reachable and agent.last_seen_at is None):
                         agent.status = new_status
