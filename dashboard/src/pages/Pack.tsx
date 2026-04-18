@@ -23,6 +23,7 @@ const inputStyle = {
 function AgentCard({ agent, onDelete, onUpdate, readOnly = false }: {
   agent: Agent, onDelete: (id: string) => void, onUpdate: () => void, readOnly?: boolean
 }) {
+  const { localAgentConfigs, setLocalAgentConfig } = useStore()
   const isOnline = agent.status === 'online'
   const rank = agent.rank
   const color = rankColors[rank] || 'var(--text-secondary)'
@@ -37,6 +38,10 @@ function AgentCard({ agent, onDelete, onUpdate, readOnly = false }: {
   const [editWorkspaceUrl, setEditWorkspaceUrl] = useState((agent.soul as any)?.workspace_url || '')
   const [discovering, setDiscovering] = useState(false)
   const [saving, setSaving] = useState(false)
+  // Local agent config (browser-direct, stored in localStorage)
+  const existingLocal = localAgentConfigs[agent.name]
+  const [editLocalUrl, setEditLocalUrl] = useState(existingLocal?.localEndpointUrl || '')
+  const [editLocalToken, setEditLocalToken] = useState(existingLocal?.localBearerToken || '')
 
   const handleDiscover = async () => {
     if (!editEndpoint.trim()) return
@@ -74,6 +79,15 @@ function AgentCard({ agent, onDelete, onUpdate, readOnly = false }: {
           a2a_streaming: editProtocol === 'a2a' ? true : undefined,
         },
       })
+      // Save local agent config (client-side only — not sent to server)
+      if (editLocalUrl.trim()) {
+        setLocalAgentConfig(agent.name, {
+          localEndpointUrl: editLocalUrl.trim(),
+          localBearerToken: editLocalToken.trim() || undefined,
+        })
+      } else {
+        setLocalAgentConfig(agent.name, null)
+      }
       setEditing(false)
       onUpdate()
     } catch (e: any) {
@@ -176,6 +190,28 @@ function AgentCard({ agent, onDelete, onUpdate, readOnly = false }: {
         </div>
       )}
 
+      {/* Local agent badge (read-only view) */}
+      {!editing && existingLocal && (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>LOCAL ENDPOINT</div>
+            <span style={{
+              fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 8,
+              background: 'rgba(250,204,21,0.15)', color: '#facc15',
+              border: '1px solid rgba(250,204,21,0.3)',
+            }}>LOCAL</span>
+          </div>
+          <code style={{
+            fontSize: 11, color: '#facc15', background: 'var(--bg-elevated)',
+            padding: '4px 8px', borderRadius: 4, display: 'block',
+            border: '1px solid var(--border)', wordBreak: 'break-all',
+          }}>{existingLocal.localEndpointUrl}</code>
+          <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4, fontStyle: 'italic' }}>
+            Browser-direct — your device only
+          </div>
+        </div>
+      )}
+
       {/* Edit panel */}
       {editing && (
         <div style={{ marginTop: 8 }}>
@@ -242,7 +278,36 @@ function AgentCard({ agent, onDelete, onUpdate, readOnly = false }: {
             )}
           </div>
 
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {/* ── Local Agent (browser-direct) ────────────────────────── */}
+          <div style={{
+            marginTop: 12, padding: 12, borderRadius: 8,
+            background: 'rgba(250,204,21,0.04)',
+            border: '1px solid rgba(250,204,21,0.15)',
+          }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#facc15', letterSpacing: '0.06em', marginBottom: 8 }}>
+              LOCAL AGENT (BROWSER-DIRECT)
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 10, lineHeight: 1.5 }}>
+              Runs on <strong style={{ color: 'var(--text-primary)' }}>your device</strong>. The server cannot reach it — your browser calls it directly. Leave blank if this is a remote agent.
+            </div>
+            <div className="form-row-stack" style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
+              <div style={{ flex: 2 }}>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 4 }}>LOCAL ENDPOINT URL</div>
+                <input value={editLocalUrl} onChange={e => setEditLocalUrl(e.target.value)} placeholder="http://localhost:8634" style={inputStyle} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 4 }}>LOCAL BEARER TOKEN</div>
+                <input value={editLocalToken} onChange={e => setEditLocalToken(e.target.value)} placeholder="Optional" type="password" style={inputStyle} />
+              </div>
+            </div>
+            {editLocalUrl.trim() && editEndpoint.trim() && (
+              <div style={{ fontSize: 10, color: '#facc15', marginTop: 6, lineHeight: 1.5 }}>
+                ⚠ Both a server endpoint and a local URL are set. When you @mention this agent, <strong>both</strong> the server and your browser will call it — you may get double responses. Clear the server endpoint if this agent only runs locally.
+              </div>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 12 }}>
             <button onClick={handleSave} disabled={saving} style={{
               padding: '6px 16px', background: 'var(--accent)', border: 'none', borderRadius: 6,
               color: 'white', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4,

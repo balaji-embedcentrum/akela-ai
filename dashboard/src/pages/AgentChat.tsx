@@ -7,6 +7,7 @@ import { ArrowLeft, Bot } from 'lucide-react'
 import { MessageContent } from '../components/MessageContent'
 import { MessageActions } from '../components/MessageActions'
 import { ChatInput } from '../components/ChatInput'
+import { streamLocalChat, buildLocalHistory } from '../local-chat'
 
 const API_BASE = import.meta.env.DEV ? 'http://localhost:8200' : '/akela-api'
 
@@ -137,7 +138,7 @@ function DMBubble({
 export function AgentChat() {
   const { agentName } = useParams<{ agentName: string }>()
   const navigate = useNavigate()
-  const { token, agents, clearUnread } = useStore()
+  const { token, agents, clearUnread, localAgentConfigs } = useStore()
   const [messages, setMessages] = useState<Message[]>([])
   const [sending, setSending] = useState(false)
   const [typing, setTyping] = useState(false)
@@ -151,6 +152,8 @@ export function AgentChat() {
 
   const agent = agents.find(a => a.name === agentName)
   const room = `dm:${agentName}`
+  const localConfig = agentName ? localAgentConfigs[agentName] : null
+  const localAbortRef = useRef<AbortController | null>(null)
 
   // Reset ALL state when switching between agents
   useEffect(() => {
@@ -241,6 +244,7 @@ export function AgentChat() {
     setLastUserMessage(text.trim())
     setLastStats(null)
     try {
+      // Persist user message via server (unchanged — also dispatches to remote agents)
       await api.post('/chat/messages/alpha', {
         content: text.trim(),
         room,
@@ -251,6 +255,98 @@ export function AgentChat() {
       console.error('Send failed:', e)
     }
     setSending(false)
+
+    // If this DM target has a local config, call it directly from the browser
+    if (localConfig && agentName) {
+      handleLocalDM(text.trim())
+    }
+  }
+
+  /** Stream a response from a local agent in a DM. */
+  const handleLocalDM = async (content: string) => {
+    if (!localConfig || !agentName) return
+    const abortController = new AbortController()
+    localAbortRef.current = abortController
+
+    setTyping(true)
+    const history = buildLocalHistory(messages, agentName, 6)
+    const allMessages = [...history, { role: 'user', content }]
+
+    let fullText = ''
+    let usage: Record<string, unknown> = {}
+    let model = ''
+    const startTs = Date.now()
+
+    try {
+      for await (const chunk of streamLocalChat(localConfig, allMessages, abortController.signal)) {
+        if (chunk.type === 'content' && chunk.text) {
+          fullText += chunk.text
+          setStreamingText(fullText)
+          setIsStreaming(true)
+          setTyping(false)
+        } else if (chunk.type === 'tool_use' && chunk.toolName) {
+          setToolSteps(prev => [...prev, { tool_name: chunk.toolName!, preview: chunk.preview || '' }])
+        } else if (chunk.type === 'done') {
+          usage = chunk.usage || {}
+          model = chunk.model || ''
+        }
+      }
+    } catch (err) {
+      if ((err as Error).name !== 'AbortError') {
+        console.error(`[local-dm] ${agentName} error:`, err)
+      }
+      setIsStreaming(false)
+      setStreamingText('')
+      setTyping(false)
+      localAbortRef.current = null
+      return
+    }
+
+    localAbortRef.current = null
+    setIsStreaming(false)
+    setStreamingText('')
+    setTyping(false)
+
+    if (!fullText.trim()) return
+
+    const durationMs = Date.now() - startTs
+    const completionTokens = (usage as { completion_tokens?: number }).completion_tokens || 0
+    const tokensPerSec = completionTokens > 0 && durationMs > 0
+      ? Math.round(completionTokens / (durationMs / 1000) * 10) / 10 : 0
+    setLastStats({ usage: usage as any, durationMs, tokensPerSec })
+
+    const meta = { usage: { ...usage, model }, duration_ms: durationMs, tokens_per_sec: tokensPerSec, model }
+
+    // Relay to server for persistence
+    try {
+      const relayRes = await api.post('/chat/relay', {
+        agent_name: agentName,
+        content: fullText,
+        room,
+        msg_metadata: meta,
+      })
+      if (relayRes.data?.id) {
+        setMessages(prev => {
+          if (prev.some(m => m.id === relayRes.data.id)) return prev
+          return [...prev, relayRes.data as Message]
+        })
+      }
+    } catch (e) {
+      console.error('[local-dm] relay failed:', e)
+      setMessages(prev => [...prev, {
+        id: crypto.randomUUID(),
+        sender_name: agentName,
+        sender_role: 'agent',
+        content: fullText,
+        room,
+        mentions: [],
+        mention_type: 'normal',
+        created_at: new Date().toISOString(),
+        msg_metadata: meta,
+      } as Message])
+    }
+
+    setToolSteps([])
   }
 
   const handleRegenerate = async () => {
@@ -264,6 +360,9 @@ export function AgentChat() {
       setTyping(true)
     } catch (e) {
       console.error('Regenerate failed:', e)
+    }
+    if (localConfig && agentName) {
+      handleLocalDM(lastUserMessage)
     }
   }
 
@@ -433,6 +532,10 @@ export function AgentChat() {
         onStop={async () => {
           try {
             await api.post('/chat/stop', { room })
+            if (localAbortRef.current) {
+              localAbortRef.current.abort()
+              localAbortRef.current = null
+            }
             setTyping(false)
             setIsStreaming(false)
             setStreamingText('')

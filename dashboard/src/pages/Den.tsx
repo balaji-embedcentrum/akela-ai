@@ -6,6 +6,7 @@ import { Radio, AtSign, Plus, Folder, Trash2, GripVertical, MessageSquare, Folde
 import { MessageContent } from '../components/MessageContent'
 import { MessageActions } from '../components/MessageActions'
 import { ChatInput } from '../components/ChatInput'
+import { streamLocalChat, buildLocalHistory } from '../local-chat'
 
 const API_BASE = import.meta.env.DEV ? 'http://localhost:8200' : '/akela-api'
 
@@ -500,6 +501,7 @@ export function Den() {
   const {
     messages, setMessages, addMessage, activeRoom, setActiveRoom,
     activeConversation, agents, activeProject, notifyTaskUpdate,
+    localAgentConfigs,
   } = useStore()
 
   // Switch room when project changes
@@ -530,6 +532,8 @@ export function Den() {
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const typingTimeouts = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+  // Abort controllers for in-flight local agent streams (keyed by agent name)
+  const localAbortRef = useRef<Record<string, AbortController>>({})
 
   // Hunt autocomplete data — fetched from DB when project changes
   const [huntEpics, setHuntEpics] = useState<{id: string, title: string}[]>([])
@@ -807,6 +811,8 @@ export function Den() {
     setLastUserInput(content)
     setLastDenStats(null)
     try {
+      // Persist the user message via the server (unchanged — remote agents
+      // are dispatched by the server-side endpoint_caller through this path)
       await api.post('/chat/messages/alpha', {
         room: activeRoom,
         content,
@@ -814,6 +820,149 @@ export function Den() {
       })
     } catch (e) {
       console.error(e)
+    }
+
+    // ── Local agent dispatch (browser-direct) ─────────────────────────
+    // Parse @mentions from content and call local agents directly.
+    // This runs IN ADDITION TO the server post — remote agents are still
+    // dispatched by the server. Local agents (which the server can't
+    // reach) are called from the browser.
+    const mentionMatches = content.match(/@([\w-]+)/g) || []
+    const mentionedNames = mentionMatches.map(m => m.slice(1))
+
+    let localTargets: string[] = []
+    if (mentionedNames.includes('all')) {
+      // @all broadcast — call every agent that has a local config
+      localTargets = agents
+        .filter(a => localAgentConfigs[a.name])
+        .map(a => a.name)
+    } else {
+      // Specific mentions — call only the ones with local configs
+      localTargets = mentionedNames.filter(name => localAgentConfigs[name])
+    }
+
+    for (const agentName of localTargets) {
+      handleLocalAgentChat(agentName, content, activeRoom)
+    }
+  }
+
+  /** Stream a response from a local agent running on the user's device. */
+  const handleLocalAgentChat = async (agentName: string, content: string, room: string) => {
+    const config = localAgentConfigs[agentName]
+    if (!config) return
+
+    const streamId = crypto.randomUUID().slice(0, 8)
+    const startTs = Date.now()
+    const abortController = new AbortController()
+    localAbortRef.current[agentName] = abortController
+
+    // Show typing indicator
+    setTypingAgents(prev => [...new Set([...prev, agentName])])
+
+    // Build history from current messages (same logic as server-side build_history)
+    const history = buildLocalHistory(messages, agentName, 6)
+    const allMessages = [...history, { role: 'user', content }]
+
+    let fullText = ''
+    let usage: Record<string, unknown> = {}
+    let model = ''
+    const toolCalls: { name: string; preview: string }[] = []
+
+    try {
+      for await (const chunk of streamLocalChat(config, allMessages, abortController.signal)) {
+        if (chunk.type === 'content' && chunk.text) {
+          fullText += chunk.text
+          setStreamingMessages(prev => ({
+            ...prev,
+            [streamId]: { sender_name: agentName, full_text: fullText },
+          }))
+          setTypingAgents(prev => prev.filter(n => n !== agentName))
+        } else if (chunk.type === 'tool_use' && chunk.toolName) {
+          toolCalls.push({ name: chunk.toolName, preview: chunk.preview || '' })
+          setActiveToolSteps(prev => ({
+            ...prev,
+            [agentName]: [...(prev[agentName] || []), {
+              stream_id: streamId,
+              sender_name: agentName,
+              tool_name: chunk.toolName!,
+              preview: chunk.preview || '',
+            }],
+          }))
+        } else if (chunk.type === 'done') {
+          usage = chunk.usage || {}
+          model = chunk.model || ''
+        }
+      }
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') {
+        // User clicked Stop — clean up silently
+      } else {
+        console.error(`[local-agent] ${agentName} error:`, err)
+      }
+      setStreamingMessages(prev => { const n = { ...prev }; delete n[streamId]; return n })
+      setTypingAgents(prev => prev.filter(n => n !== agentName))
+      delete localAbortRef.current[agentName]
+      return
+    }
+
+    delete localAbortRef.current[agentName]
+
+    // Clear streaming state
+    setStreamingMessages(prev => { const n = { ...prev }; delete n[streamId]; return n })
+    setTypingAgents(prev => prev.filter(n => n !== agentName))
+
+    if (!fullText.trim()) return
+
+    // Compute stats
+    const durationMs = Date.now() - startTs
+    const completionTokens = (usage as { completion_tokens?: number }).completion_tokens || 0
+    const tokensPerSec = completionTokens > 0 && durationMs > 0
+      ? Math.round(completionTokens / (durationMs / 1000) * 10) / 10
+      : 0
+
+    setLastDenStats({ usage: usage as any, durationMs, tokensPerSec })
+
+    // Build metadata matching the format endpoint_caller produces
+    const meta = {
+      usage: { ...usage, model },
+      duration_ms: durationMs,
+      tokens_per_sec: tokensPerSec,
+      model,
+      tool_calls: toolCalls,
+    }
+
+    // Relay to server for persistence
+    try {
+      const relayRes = await api.post('/chat/relay', {
+        agent_name: agentName,
+        content: fullText,
+        room,
+        msg_metadata: meta,
+      })
+      if (relayRes.data?.id) {
+        // Transfer tool steps from the agent key to the message id
+        setActiveToolSteps(prev => {
+          if (prev[agentName]?.length) {
+            setMessageToolSteps(ms => ({ ...ms, [relayRes.data.id]: prev[agentName] }))
+          }
+          const next = { ...prev }; delete next[agentName]; return next
+        })
+        addMessage(relayRes.data as Message)
+      }
+    } catch (e) {
+      console.error('[local-agent] relay failed, adding message locally:', e)
+      // Still show the message even if relay fails (offline resilience)
+      addMessage({
+        id: streamId,
+        sender_name: agentName,
+        sender_role: 'agent',
+        content: fullText,
+        room,
+        mentions: [],
+        mention_type: 'normal',
+        created_at: new Date().toISOString(),
+        msg_metadata: meta,
+      } as Message)
     }
   }
 
@@ -824,6 +973,18 @@ export function Den() {
       await api.post('/chat/messages/alpha', { room: activeRoom, content: lastUserInput })
     } catch (e) {
       console.error(e)
+    }
+    // Also re-trigger local agents if any were mentioned
+    const mentionMatches = lastUserInput.match(/@([\w-]+)/g) || []
+    const mentionedNames = mentionMatches.map(m => m.slice(1))
+    let localTargets: string[] = []
+    if (mentionedNames.includes('all')) {
+      localTargets = agents.filter(a => localAgentConfigs[a.name]).map(a => a.name)
+    } else {
+      localTargets = mentionedNames.filter(name => localAgentConfigs[name])
+    }
+    for (const agentName of localTargets) {
+      handleLocalAgentChat(agentName, lastUserInput, activeRoom)
     }
   }
 
@@ -1126,7 +1287,11 @@ export function Den() {
               isActive={typingAgents.length > 0 || Object.keys(streamingMessages).length > 0}
               onStop={async () => {
                 try {
+                  // Stop remote agents via server
                   await api.post('/chat/stop', { room: activeRoom })
+                  // Abort any in-flight local agent streams
+                  Object.values(localAbortRef.current).forEach(c => c.abort())
+                  localAbortRef.current = {}
                   setTypingAgents([])
                   setStreamingMessages({})
                 } catch (e) { console.error('Stop failed:', e) }
