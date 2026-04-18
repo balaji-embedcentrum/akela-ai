@@ -93,7 +93,9 @@ class HuntTask(Base):
     epic_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("hunt_epics.id"), nullable=False)
     story_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("hunt_stories.id"), nullable=True)
     sprint_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("hunt_sprints.id"), nullable=True)
-    assignee_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("agents.id"), nullable=True)
+    # SET NULL on agent delete: preserves task history (title, status, comments)
+    # and marks it as unassigned instead of blocking the agent's deletion.
+    assignee_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("agents.id", ondelete="SET NULL"), nullable=True)
     title: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str] = mapped_column(Text, default="", server_default="")
     status: Mapped[str] = mapped_column(String, default="todo")
@@ -118,7 +120,8 @@ class Subtask(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     task_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("hunt_tasks.id"), nullable=False)
-    assignee_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("agents.id"), nullable=True)
+    # SET NULL on agent delete — same rationale as HuntTask.assignee_id.
+    assignee_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("agents.id", ondelete="SET NULL"), nullable=True)
     title: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str] = mapped_column(Text, default="", server_default="")
     status: Mapped[str] = mapped_column(String, default="todo")
