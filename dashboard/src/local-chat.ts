@@ -58,26 +58,164 @@ export function setLocalConfig(agentName: string, config: LocalAgentConfig | nul
   return all
 }
 
-// ── Streaming chat ───────────────────────────────────────────────────
+// ── Protocol detection ───────────────────────────────────────────────
+
+/** Cached protocol per endpoint URL so we don't probe on every message. */
+const _protocolCache = new Map<string, 'a2a' | 'openai'>()
 
 /**
- * Call a local agent's /v1/chat/completions endpoint with streaming,
- * yielding parsed chunks as they arrive.
- *
- * The caller (Den.tsx) renders each chunk into the streaming message
- * bubble, then calls /chat/relay to persist the final text.
+ * Detect whether the local agent speaks A2A (JSON-RPC) or OpenAI
+ * (/v1/chat/completions). Probes /.well-known/agent.json first — if
+ * it exists, this is an A2A agent. Otherwise falls back to OpenAI.
+ * Result is cached for the lifetime of the page.
+ */
+async function detectProtocol(baseUrl: string, headers: Record<string, string>): Promise<'a2a' | 'openai'> {
+  const cached = _protocolCache.get(baseUrl)
+  if (cached) return cached
+
+  try {
+    const res = await fetch(`${baseUrl}/.well-known/agent.json`, {
+      headers, signal: AbortSignal.timeout(3000),
+    })
+    if (res.ok) {
+      _protocolCache.set(baseUrl, 'a2a')
+      return 'a2a'
+    }
+  } catch { /* not A2A */ }
+
+  // Also try agent-card.json (A2A SDK 0.3.x)
+  try {
+    const res = await fetch(`${baseUrl}/.well-known/agent-card.json`, {
+      headers, signal: AbortSignal.timeout(3000),
+    })
+    if (res.ok) {
+      _protocolCache.set(baseUrl, 'a2a')
+      return 'a2a'
+    }
+  } catch { /* not A2A */ }
+
+  _protocolCache.set(baseUrl, 'openai')
+  return 'openai'
+}
+
+// ── Streaming chat (auto-detect protocol) ────────────────────────────
+
+/**
+ * Call a local agent, auto-detecting whether it speaks A2A or OpenAI.
+ * Yields parsed chunks as they arrive. The caller (Den.tsx) renders
+ * each chunk, then calls /chat/relay to persist the final text.
  */
 export async function* streamLocalChat(
   config: LocalAgentConfig,
   messages: Array<{ role: string; content: string }>,
   signal?: AbortSignal,
 ): AsyncGenerator<LocalStreamChunk, void, void> {
-  const url = `${config.localEndpointUrl.replace(/\/+$/, '')}/v1/chat/completions`
-
+  const baseUrl = config.localEndpointUrl.replace(/\/+$/, '')
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (config.localBearerToken) {
     headers['Authorization'] = `Bearer ${config.localBearerToken}`
   }
+
+  const protocol = await detectProtocol(baseUrl, headers)
+
+  if (protocol === 'a2a') {
+    yield* _streamA2A(baseUrl, messages, headers, signal)
+  } else {
+    yield* _streamOpenAI(baseUrl, messages, headers, signal)
+  }
+}
+
+// ── A2A protocol (JSON-RPC message/send) ─────────────────────────────
+
+async function* _streamA2A(
+  baseUrl: string,
+  messages: Array<{ role: string; content: string }>,
+  headers: Record<string, string>,
+  signal?: AbortSignal,
+): AsyncGenerator<LocalStreamChunk, void, void> {
+  // Build the user message with conversation history as context
+  const parts: Array<{ type: string; text: string }> = []
+  if (messages.length > 1) {
+    const historyLines = messages.slice(0, -1).map(m =>
+      `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`
+    )
+    parts.push({ type: 'text', text: `[Prior conversation]\n${historyLines.join('\n')}\n[End prior conversation]\n\n` })
+  }
+  parts.push({ type: 'text', text: messages[messages.length - 1].content })
+
+  const payload = {
+    jsonrpc: '2.0',
+    id: crypto.randomUUID(),
+    method: 'message/send',
+    params: {
+      message: {
+        messageId: crypto.randomUUID(),
+        role: 'user',
+        parts,
+      },
+    },
+  }
+
+  const response = await fetch(baseUrl, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload),
+    signal,
+  })
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '')
+    throw new Error(`Local A2A agent ${response.status}: ${text.slice(0, 200)}`)
+  }
+
+  const data = await response.json() as {
+    result?: {
+      artifacts?: Array<{
+        parts?: Array<{ kind?: string; type?: string; text?: string }>
+      }>
+      status?: { state?: string }
+      metadata?: { usage?: Record<string, unknown> }
+    }
+    error?: { message?: string }
+  }
+
+  if (data.error) {
+    throw new Error(`A2A error: ${data.error.message || JSON.stringify(data.error)}`)
+  }
+
+  const task = data.result
+  if (!task) {
+    yield { type: 'done', usage: {} }
+    return
+  }
+
+  // Extract text from all artifacts
+  let fullText = ''
+  for (const artifact of (task.artifacts || [])) {
+    for (const part of (artifact.parts || [])) {
+      if ((part.kind === 'text' || part.type === 'text') && part.text) {
+        fullText += part.text
+      }
+    }
+  }
+
+  if (fullText) {
+    yield { type: 'content', text: fullText }
+  }
+
+  const usage = task.metadata?.usage || {}
+  yield { type: 'done', usage }
+}
+
+// ── OpenAI protocol (/v1/chat/completions SSE) ───────────────────────
+
+async function* _streamOpenAI(
+  baseUrl: string,
+  messages: Array<{ role: string; content: string }>,
+  headers: Record<string, string>,
+  signal?: AbortSignal,
+): AsyncGenerator<LocalStreamChunk, void, void> {
+  const url = `${baseUrl}/v1/chat/completions`
 
   const response = await fetch(url, {
     method: 'POST',
@@ -106,7 +244,6 @@ export async function* streamLocalChat(
 
       buffer += decoder.decode(value, { stream: true })
 
-      // Process complete lines
       let newlineIdx = buffer.indexOf('\n')
       while (newlineIdx >= 0) {
         const line = buffer.slice(0, newlineIdx).trim()
@@ -140,35 +277,19 @@ export async function* streamLocalChat(
           if (chunk.model && !model) model = chunk.model
 
           const delta = chunk.choices?.[0]?.delta
-          if (!delta) {
-            newlineIdx = buffer.indexOf('\n')
-            continue
-          }
+          if (!delta) { newlineIdx = buffer.indexOf('\n'); continue }
 
-          // Hermes-specific tool_use format
           if (delta.tool_use) {
-            yield {
-              type: 'tool_use',
-              toolName: delta.tool_use.name || '',
-              preview: delta.tool_use.preview || '',
-            }
-          }
-          // Standard OpenAI tool_calls format
-          else if (delta.tool_calls) {
+            yield { type: 'tool_use', toolName: delta.tool_use.name || '', preview: delta.tool_use.preview || '' }
+          } else if (delta.tool_calls) {
             for (const tc of delta.tool_calls) {
               const name = tc.function?.name
-              if (name) {
-                yield { type: 'tool_use', toolName: name, preview: '' }
-              }
+              if (name) yield { type: 'tool_use', toolName: name, preview: '' }
             }
-          }
-          // Content chunk
-          else if (delta.content) {
+          } else if (delta.content) {
             yield { type: 'content', text: delta.content }
           }
-        } catch {
-          // Skip malformed JSON chunks
-        }
+        } catch { /* skip malformed */ }
 
         newlineIdx = buffer.indexOf('\n')
       }
@@ -177,7 +298,6 @@ export async function* streamLocalChat(
     reader.releaseLock()
   }
 
-  // Final chunk with accumulated usage stats
   yield { type: 'done', usage, model }
 }
 
