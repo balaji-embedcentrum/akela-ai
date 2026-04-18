@@ -1,0 +1,24 @@
+# Git
+.git
+.gitignore
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment and secrets
+.env
+.env.*
+*.pem
+private_key.pem
+
+# Build artifacts
+node_modules
+dist
+.cache
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo

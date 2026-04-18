@@ -1,0 +1,32 @@
+# Git
+.git
+.gitignore
+
+# Environment and secrets
+.env
+.env.*
+*.pem
+private_key.pem
+
+# Build artifacts
+node_modules
+__pycache__
+*.pyc
+dist
+.cache
+*.egg-info
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local docs (don't include these in the api/worker build context)
+ADMIN_GUIDE.md
+SECURITY.md
+*.md

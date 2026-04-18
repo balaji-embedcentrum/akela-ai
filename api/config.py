@@ -1,47 +1,72 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
+from pydantic import Field
 
 
 class Settings(BaseSettings):
-    database_url: str = "postgresql+asyncpg://akela:akela@localhost:5432/akela"
-    redis_url: str = "redis://localhost:6379"
-    secret_key: str = "changeme-use-a-real-secret"
+    # --- Required: no defaults, must be set in .env ---
+    # Database connection URL.
+    # Format: postgresql+asyncpg://USER:PASSWORD@HOST:PORT/DATABASE
+    database_url: str = Field(
+        ...,
+        description="PostgreSQL connection URL. Required — no default.",
+    )
+
+    # Redis connection URL.
+    # Format: redis://[:PASSWORD@]HOST:PORT[/DB]
+    # REDIS_PASSWORD must be set for any non-local environment.
+    redis_url: str = Field(
+        ...,
+        description="Redis connection URL. Required — no default.",
+    )
+
+    # JWT signing secret. Generate with: openssl rand -hex 32
+    secret_key: str = Field(
+        ...,
+        description="Secret key for signing JWTs. Generate with: openssl rand -hex 32",
+    )
+
+    # Admin credentials for local auth (alpha / password login).
+    # IMPORTANT: Change ADMIN_PASSWORD before first deployment.
+    admin_username: str = Field(
+        ...,
+        description="Admin login username. Must be set in .env.",
+    )
+    admin_password: str = Field(
+        ...,
+        description="Admin login password. Must be set in .env — use a strong unique value.",
+    )
+
+    # --- Optional: safe defaults that are fine to commit ---
     jwt_algorithm: str = "HS256"
     jwt_expire_hours: int = 24
 
-    # Phase 1 simple auth — single orchestrator
-    admin_username: str = "alpha"
-    admin_password: str = "changeme"  # override via env
-
-    # GitHub OAuth (Phase 2)
+    # GitHub OAuth (optional — leave blank to disable GitHub login)
     github_client_id: str = ""
     github_client_secret: str = ""
     github_redirect_uri: str = "http://localhost:8200/akela-api/auth/github/callback"
 
+    # Dashboard binding (usually fine at defaults)
     api_host: str = "0.0.0.0"
     api_port: int = 8200
 
-    # Trust score thresholds (override via env: TRUST_DELTA_MAX=85)
+    # Trust score thresholds
     trust_initial_score: float = 50.0
     trust_restricted_max: float = 30.0
     trust_omega_max: float = 60.0
     trust_delta_max: float = 85.0
 
-    # Web Push (VAPID). Generate a keypair with:
-    #   python -c "from py_vapid import Vapid; v = Vapid(); v.generate_keys(); \
-    #     print('private:', v.private_key.private_numbers().private_value); \
-    #     print('public:', v.public_key_urlsafe_base64().decode())"
-    # Or simpler, use the 'vapid' CLI that ships with py-vapid:
-    #   vapid --gen
-    # Leave blank to disable Web Push entirely — the /push/* endpoints will
-    # return 503 and the frontend hides the notification opt-in.
+    # Web Push / VAPID (optional — leave blank to disable push notifications)
+    # To generate: docker compose -f docker-compose.prod.yml exec api vapid --gen
     vapid_public_key: str = ""
     vapid_private_key: str = ""
     vapid_subject: str = "mailto:admin@example.com"
 
-    class Config:
-        env_file = ".env"
-        extra = "ignore"
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
 
 @lru_cache()
