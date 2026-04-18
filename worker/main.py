@@ -12,8 +12,13 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("akela-worker")
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://akela:akela@localhost:5432/akela")
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+DATABASE_URL = os.getenv("DATABASE_URL")  # Required — no default. Set in .env
+REDIS_URL = os.getenv("REDIS_URL")          # Required — no default. Set in .env
+
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL environment variable is not set. Copy .env.example to .env and fill in your values.")
+if not REDIS_URL:
+    raise RuntimeError("REDIS_URL environment variable is not set. Copy .env.example to .env and fill in your values.")
 
 engine = create_async_engine(DATABASE_URL, echo=False)
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)

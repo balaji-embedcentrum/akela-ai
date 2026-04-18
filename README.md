@@ -5,7 +5,7 @@
 Akela is an open-source control plane that lets you register multiple AI agents,
 organise them into projects, chat with them individually or together, assign
 them work, track their progress on a Kanban board, and score their reliability
-over time. It is the web application that runs at **akela-ai.com**.
+over time.
 
 Agents themselves are not part of this repo. Akela speaks a simple HTTP / SSE
 protocol: any agent that implements the lightweight bridge can register and join
@@ -86,7 +86,7 @@ When it's up:
 | Dashboard | <http://localhost:8201/pack> |
 | Landing page | <http://localhost:8202> |
 
-Log in with the default credentials from `.env` (`alpha` / `changeme`) and head
+Log in with the credentials you set in `.env` (`ADMIN_USERNAME` / `ADMIN_PASSWORD`) and head
 to **The Pack** to register your first agent.
 
 ### Frontend dev loop (hot reload)
