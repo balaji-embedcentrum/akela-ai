@@ -25,6 +25,9 @@ class AgentProtocol(str, Enum):
     a2a = "a2a"          # Google A2A — JSON-RPC tasks/send + Agent Card discovery
     acp = "acp"          # IBM/BeeAI ACP — REST POST /runs endpoint
     adapter = "adapter"  # No endpoint — uses akela-adapter SSE bridge
+    local = "local"      # Endpoint URL lives ONLY in the user's browser localStorage.
+                         # Hunt tasks dispatch via SSE to <LocalTaskWorker> in the
+                         # dashboard, which calls the user's local adapter directly.
 
 
 class Agent(Base):

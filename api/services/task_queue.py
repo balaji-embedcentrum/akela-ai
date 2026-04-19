@@ -18,9 +18,22 @@ from sqlalchemy import select
 import redis.asyncio as aioredis
 
 from api.models.hunt import HuntTask, Epic, Story, Project as HuntProject
-from api.models.agent import Agent
+from api.models.agent import Agent, AgentProtocol
 from api.models.message import Message, MentionType
 from api.services import pubsub
+
+
+def _notify_channel(agent: Agent) -> str:
+    """Return the Redis channel a given agent listens on for dispatch.
+
+    Remote A2A agents are served by endpoint_caller.py's subscriber on
+    ``agent:{id}:notify``. Local agents are served by the browser-side
+    ``<LocalTaskWorker>`` subscribing to ``local-agent:{id}:notify`` via
+    the SSE bridge at ``/api/hunt/local/subscribe``.
+    """
+    if agent.protocol == AgentProtocol.local:
+        return f"local-agent:{agent.id}:notify"
+    return f"agent:{agent.id}:notify"
 
 
 async def _publish_task_status(task: HuntTask, status: str, orchestrator_id: str, db: AsyncSession, redis_client: aioredis.Redis):
@@ -135,9 +148,21 @@ async def dispatch_task(
     }
     await pubsub.publish(pubsub.chat_channel(orchestrator_id, room), dispatch_event, redis_client)
 
-    # Notify the agent via Redis (real-time) — include task_id so handler can update HuntTask
-    notify_event = {**dispatch_event, "task_id": str(task.id)}
-    await redis_client.publish(f"agent:{agent.id}:notify", json.dumps(notify_event))
+    # Notify the agent via Redis (real-time) — include task_id so handler can update HuntTask.
+    # Local agents are subscribed to via the browser-side SSE bridge; remote
+    # agents are subscribed to by endpoint_caller on the "agent:..." channel.
+    # orchestrator_id is included in the payload so the SSE bridge can filter
+    # by the current dashboard user without a DB query per event.
+    notify_event = {
+        **dispatch_event,
+        "task_id": str(task.id),
+        "agent_id": str(agent.id),
+        "agent_name": agent.name,
+        "orchestrator_id": str(orchestrator_id),
+        "task_title": task.title,
+        "task_description": task.description or "",
+    }
+    await redis_client.publish(_notify_channel(agent), json.dumps(notify_event))
 
 
 async def dispatch_or_queue(

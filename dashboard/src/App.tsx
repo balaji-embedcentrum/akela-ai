@@ -10,6 +10,7 @@ import { Pack } from './pages/Pack'
 import { Settings } from './pages/Settings'
 import { Hunt } from './pages/Hunt'
 import { Login } from './pages/Login'
+import { LocalTaskWorker } from './workers/LocalTaskWorker'
 import api from './api'
 
 function ProtectedLayout() {
@@ -55,6 +56,10 @@ function ProtectedLayout() {
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
+      {/* Renderless — dispatches Hunt tasks assigned to local agents by
+          calling the user's local endpoint (localStorage) directly. Mounts
+          once per authenticated session and survives route changes. */}
+      <LocalTaskWorker />
       <Sidebar />
       <main style={{ flex: 1, overflowY: 'auto', background: 'var(--bg-base)' }}>
         <Routes>

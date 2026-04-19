@@ -244,12 +244,14 @@ function AgentCard({ agent, onDelete, onUpdate, readOnly = false }: {
               <select value={editProtocol} onChange={e => setEditProtocol(e.target.value)} style={{ ...inputStyle, width: 130 }}>
                 <option value="a2a">A2A (default)</option>
                 <option value="openai">OpenAI-compatible</option>
+                <option value="local">Local (browser)</option>
               </select>
             </div>
           </div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8, paddingLeft: 2 }}>
             {editProtocol === 'a2a' && '↳ Google A2A — supports Den chat + Hunt task dispatch. Exposes /.well-known/agent.json and tasks/sendSubscribe.'}
             {editProtocol === 'openai' && '↳ OpenAI-compatible — Den chat only. Task dispatch requires A2A. Exposes /v1/chat/completions.'}
+            {editProtocol === 'local' && '↳ Local (browser-resident) — URL lives in your browser localStorage. Den chat + Hunt tasks both run while any Akela tab is open.'}
           </div>
           <div style={{ marginBottom: 8 }}>
             <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 4 }}>BEARER TOKEN <span style={{ fontWeight: 400 }}>(optional — sent as Authorization header)</span></div>
@@ -538,6 +540,7 @@ const handleDiscoverNew = async () => {
               >
                 <option value="a2a">A2A (default)</option>
                 <option value="openai">OpenAI-compatible</option>
+                <option value="local">Local (browser)</option>
               </select>
             </div>
             <div style={{ flex: 1 }}>
@@ -568,6 +571,7 @@ const handleDiscoverNew = async () => {
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 12, paddingLeft: 2 }}>
             {protocol === 'a2a' && '↳ Google A2A — supports Den chat + Hunt task dispatch. Exposes /.well-known/agent.json and tasks/sendSubscribe.'}
             {protocol === 'openai' && '↳ OpenAI-compatible — Den chat only. Task dispatch requires A2A. Exposes /v1/chat/completions.'}
+            {protocol === 'local' && '↳ Local (browser-resident) — URL lives in your browser localStorage. Den chat + Hunt tasks both run while any Akela tab is open.'}
           </div>
 
           {/* Bearer token */}
