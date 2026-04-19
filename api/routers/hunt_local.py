@@ -44,12 +44,12 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.db.session import get_db
+from api.db.session import AsyncSessionLocal, get_db
 from api.dependencies import get_current_orchestrator_jwt, get_redis
-from api.models.agent import Agent, AgentProtocol  # noqa: F401 — AgentProtocol used in docstring
+from api.models.agent import Agent, AgentProtocol, AgentStatus
 from api.models.hunt import Epic, HuntTask, Project as HuntProject
 from api.models.message import Message, MentionType
 from api.models.orchestrator import Orchestrator
@@ -64,36 +64,106 @@ router = APIRouter(prefix="/api/hunt/local", tags=["hunt-local"])
 # GET /api/hunt/local/subscribe  (SSE)
 # ---------------------------------------------------------------------------
 
+async def _refresh_presence(
+    orchestrator_id: uuid_lib.UUID,
+    agent_names: list[str],
+    redis_client,
+) -> None:
+    """Mark the user's local agents online + bump last_seen_at.
+
+    Called on every SSE subscribe and then every 30s for as long as the
+    connection stays open. Uses its own short-lived DB session so it can
+    run both from the request handler and from the SSE keepalive loop
+    without holding the request-scoped session open for the stream's
+    lifetime.
+    """
+    if not agent_names:
+        return
+    try:
+        async with AsyncSessionLocal() as db:
+            from datetime import datetime
+
+            # Find + update only the caller's own local agents whose name
+            # appears in the list the browser sent. Case-sensitive, matches
+            # the redis dispatch payload's agent_name field exactly.
+            result = await db.execute(
+                select(Agent).where(
+                    Agent.orchestrator_id == orchestrator_id,
+                    Agent.protocol == AgentProtocol.local,
+                    Agent.name.in_(agent_names),
+                )
+            )
+            agents = list(result.scalars().all())
+            flipped: list[dict] = []
+            for a in agents:
+                was_offline = a.status != AgentStatus.online
+                a.status = AgentStatus.online
+                a.last_seen_at = datetime.utcnow()
+                if was_offline:
+                    flipped.append({
+                        "agent_id": str(a.id),
+                        "agent_name": a.name,
+                        "status": "online",
+                    })
+            await db.commit()
+
+        # Broadcast status flips on the same channel remote agents use so
+        # any open dashboard can update its Pack UI without waiting for
+        # the next poll.
+        for evt in flipped:
+            try:
+                await redis_client.publish("agent:status:update", json.dumps(evt))
+            except Exception:
+                pass
+    except Exception as e:
+        logger.warning("[hunt-local] presence refresh failed: %s", e)
+
+
 @router.get("/subscribe")
 async def subscribe(
     request: Request,
+    agents: str = "",
     current: Orchestrator = Depends(get_current_orchestrator_jwt),
     redis_client = Depends(get_redis),
 ):
     """Subscribe to task_assigned events for the current user's local agents.
 
-    Emits one SSE event per Hunt dispatch:
+    Query params:
+        agents  — optional comma-separated list of local-agent names the
+                  browser has configured in its localStorage. For as long
+                  as this SSE stays open, those agents are marked online
+                  (status='online' + last_seen_at bumped every 30s). The
+                  background health_checker flips them back to offline
+                  when last_seen_at goes stale.
 
+    Emits:
         event: task_assigned
-        data: {"task_id": "...", "agent_id": "...", "agent_name": "...",
-               "task_title": "...", "task_description": "...",
-               "dispatch_content": "@alpha 🎯 New Task: ...",
-               "room": "proj-<pid>"}
+        data: {...}
 
-    A ": ping\\n\\n" comment is emitted every 25s so proxies don't kill idle
-    connections.
+    A ": ping" comment every 25s keeps proxies from culling idle connections.
     """
     orchestrator_id = str(current.id)
+    orch_uuid = current.id
+    agent_names = [n.strip() for n in agents.split(",") if n.strip()]
+
+    # Mark this session's local agents online up front so the Pack dot goes
+    # green the moment the dashboard mounts.
+    await _refresh_presence(orch_uuid, agent_names, redis_client)
 
     async def event_stream():
         pubsub_conn = redis_client.pubsub()
         await pubsub_conn.psubscribe("local-agent:*:notify")
-        logger.info("[hunt-local] %s subscribed to local-agent:*:notify", orchestrator_id)
+        logger.info(
+            "[hunt-local] %s subscribed (agents=%s)",
+            orchestrator_id,
+            ",".join(agent_names) or "∅",
+        )
 
-        # Initial event so the client knows it's connected.
         yield "event: connected\ndata: {}\n\n"
 
-        last_ping = asyncio.get_event_loop().time()
+        loop = asyncio.get_event_loop()
+        last_ping = loop.time()
+        last_presence = loop.time()
         try:
             while True:
                 if await request.is_disconnected():
@@ -102,7 +172,7 @@ async def subscribe(
                 msg = await pubsub_conn.get_message(
                     ignore_subscribe_messages=True, timeout=5.0
                 )
-                now = asyncio.get_event_loop().time()
+                now = loop.time()
 
                 if msg is not None and msg.get("type") == "pmessage":
                     raw = msg.get("data")
@@ -112,7 +182,6 @@ async def subscribe(
                         event = json.loads(raw)
                     except Exception:
                         continue
-                    # Only forward events for agents owned by this orchestrator.
                     if event.get("orchestrator_id") != orchestrator_id:
                         continue
                     payload = {
@@ -126,10 +195,14 @@ async def subscribe(
                     }
                     yield f"event: task_assigned\ndata: {json.dumps(payload)}\n\n"
 
-                # 25s keepalive so reverse proxies don't cull the stream.
                 if now - last_ping > 25:
                     yield ": ping\n\n"
                     last_ping = now
+
+                # Heartbeat: keep the agents' last_seen_at fresh every 30s.
+                if now - last_presence > 30:
+                    await _refresh_presence(orch_uuid, agent_names, redis_client)
+                    last_presence = now
         finally:
             try:
                 await pubsub_conn.punsubscribe("local-agent:*:notify")

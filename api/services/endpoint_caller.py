@@ -552,11 +552,24 @@ async def ping_endpoint(endpoint_url: str, protocol: AgentProtocol = AgentProtoc
 
 
 async def start_health_checker(db_factory, redis_client):
-    """Periodically ping all agents with endpoint_url to keep status fresh."""
+    """Periodically refresh every agent's online/offline status.
+
+    Two populations:
+      * Remote agents (endpoint_url set) — probed via HTTP.
+      * Local agents (protocol=local) — can't be probed from the server
+        (their URL lives in a user's browser localStorage). Online while
+        any dashboard tab is actively sending presence heartbeats via
+        /api/hunt/local/subscribe (which bumps last_seen_at every 30s).
+        Flipped offline here when last_seen_at goes >90s stale.
+    """
+    from api.models.agent import AgentProtocol
+
+    LOCAL_STALE_SEC = 90
     await asyncio.sleep(10)
     while True:
         try:
             async with db_factory() as db:
+                # --- Remote agents: probe endpoint_url ------------------
                 result = await db.execute(select(Agent).where(Agent.endpoint_url.isnot(None)))
                 agents = result.scalars().all()
                 for agent in agents:
@@ -573,6 +586,26 @@ async def start_health_checker(db_factory, redis_client):
                             "agent_name": agent.name,
                             "status": new_status.value,
                         }))
+
+                # --- Local agents: staleness check ----------------------
+                local_result = await db.execute(
+                    select(Agent).where(Agent.protocol == AgentProtocol.local)
+                )
+                for agent in local_result.scalars().all():
+                    stale = (
+                        agent.last_seen_at is None
+                        or (datetime.utcnow() - agent.last_seen_at).total_seconds()
+                           > LOCAL_STALE_SEC
+                    )
+                    new_status = AgentStatus.offline if stale else AgentStatus.online
+                    if agent.status != new_status:
+                        agent.status = new_status
+                        await redis_client.publish("agent:status:update", json.dumps({
+                            "agent_id": str(agent.id),
+                            "agent_name": agent.name,
+                            "status": new_status.value,
+                        }))
+
                 await db.commit()
         except Exception as e:
             logger.warning(f"health_checker: error: {e}")
