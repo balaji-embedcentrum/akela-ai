@@ -49,8 +49,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.db.session import get_db
 from api.dependencies import get_current_orchestrator_jwt, get_redis
-from api.models.agent import Agent, AgentProtocol
-from api.models.hunt import HuntTask
+from api.models.agent import Agent, AgentProtocol  # noqa: F401 — AgentProtocol used in docstring
+from api.models.hunt import Epic, HuntTask, Project as HuntProject
 from api.models.message import Message, MentionType
 from api.models.orchestrator import Orchestrator
 from api.services import pubsub
@@ -157,8 +157,15 @@ async def _load_owned_task(
     task_id: str,
     orchestrator_id: uuid_lib.UUID,
     db: AsyncSession,
-) -> tuple[HuntTask, Agent]:
-    """Fetch task + agent, or 404 if not found / not owned."""
+) -> tuple[HuntTask, Agent, str]:
+    """Fetch task + agent + the Den room, or 404 if not found / not owned.
+
+    We resolve the room via an explicit query on Epic + HuntProject rather
+    than the ``task.epic`` relationship: under SQLAlchemy async, lazy-loaded
+    relationships accessed outside the original load raise MissingGreenlet.
+    The explicit query is how the rest of the codebase already does it
+    (see task_queue._publish_task_status).
+    """
     try:
         task_uuid = uuid_lib.UUID(task_id)
     except ValueError:
@@ -174,7 +181,21 @@ async def _load_owned_task(
     if not agent or agent.orchestrator_id != orchestrator_id:
         raise HTTPException(404, "Task not found")
 
-    return task, agent
+    # Resolve the Den room for this task (proj-<hp.project_id>) without
+    # touching task.epic / epic.project (async-lazy hazard).
+    room = ""
+    if task.epic_id:
+        epic_r = await db.execute(select(Epic).where(Epic.id == task.epic_id))
+        epic = epic_r.scalar_one_or_none()
+        if epic:
+            hp_r = await db.execute(
+                select(HuntProject).where(HuntProject.id == epic.project_id)
+            )
+            hp = hp_r.scalar_one_or_none()
+            if hp and hp.project_id:
+                room = f"proj-{hp.project_id}"
+
+    return task, agent, room
 
 
 # ---------------------------------------------------------------------------
@@ -204,7 +225,7 @@ async def post_event(
     redis_client = Depends(get_redis),
 ):
     """Forward a streamed artifact delta to Den so users see live progress."""
-    task, agent = await _load_owned_task(task_id, current.id, db)
+    task, agent, room = await _load_owned_task(task_id, current.id, db)
 
     if not (payload.artifact_text or payload.tool_call):
         return {"status": "noop"}
@@ -213,7 +234,6 @@ async def post_event(
     # The final text lands in Den via /done. Here we publish a lightweight
     # ephemeral event so any open Den tab can show "alpha is typing…"-style
     # progress if it wants to.
-    room = f"proj-{task.epic.project_id}" if task.epic else ""
     if room:
         chunk_event = {
             "type": "agent_chunk",
@@ -257,8 +277,7 @@ async def post_done(
     redis_client = Depends(get_redis),
 ):
     """Mark a local-agent Hunt task as terminal and post its response to Den."""
-    task, agent = await _load_owned_task(task_id, current.id, db)
-    room = f"proj-{task.epic.project_id}" if task.epic else ""
+    task, agent, room = await _load_owned_task(task_id, current.id, db)
 
     # 1. Persist the final assistant response as a Message from the agent
     #    so the Den conversation shows the answer.
