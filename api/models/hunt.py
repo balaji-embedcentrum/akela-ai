@@ -105,6 +105,10 @@ class HuntTask(Base):
     estimate: Mapped[str] = mapped_column(String, nullable=True)
     issue_number: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_by: Mapped[str] = mapped_column(String, default="alpha")
+    # Claim lock for local-agent tasks. NULL until a browser tab claims
+    # the task via /api/hunt/local/tasks/{id}/claim; cleared again on /done.
+    # Only relevant for protocol='local' assignees — remote agents ignore it.
+    local_claim_id: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
