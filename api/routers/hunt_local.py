@@ -272,6 +272,63 @@ async def _load_owned_task(
 
 
 # ---------------------------------------------------------------------------
+# POST /api/hunt/local/tasks/{id}/claim
+# ---------------------------------------------------------------------------
+
+class ClaimPayload(BaseModel):
+    """Per-tab claim request. `claim_id` is any browser-generated identifier
+    (the worker uses crypto.randomUUID()). Whichever tab claims first wins;
+    the losers drop the task."""
+
+    claim_id: str = Field(..., min_length=1)
+
+
+@router.post("/tasks/{task_id}/claim")
+async def claim(
+    task_id: str,
+    payload: ClaimPayload,
+    current: Orchestrator = Depends(get_current_orchestrator_jwt),
+    db: AsyncSession = Depends(get_db),
+):
+    """Atomically claim a local-agent task for a single browser tab.
+
+    Returns:
+      * 200 {claimed: true}  — this tab now owns the task, safe to execute
+      * 200 {claimed: false, claim_id: "<other>"} — another tab already
+                                                     claimed it; caller
+                                                     should silently drop
+      * 404 — task not found / not owned / not assigned
+    """
+    task, _agent, _room = await _load_owned_task(task_id, current.id, db)
+
+    # Atomic check-and-set using a WHERE clause on the current value.
+    # asyncpg + SQLAlchemy compile this as a single UPDATE ... WHERE ...,
+    # so two concurrent tabs racing to claim will see one success and
+    # one zero-row update without any extra locking.
+    result = await db.execute(
+        update(HuntTask)
+        .where(
+            HuntTask.id == task.id,
+            HuntTask.local_claim_id.is_(None),
+        )
+        .values(local_claim_id=payload.claim_id)
+    )
+    await db.commit()
+
+    if result.rowcount == 1:
+        return {"claimed": True, "claim_id": payload.claim_id}
+
+    # Read back whoever won so the caller can log it if they want.
+    await db.refresh(task)
+    # Same tab reclaiming its own task (e.g. page reload mid-execution)
+    # should also be treated as claimed so execution can continue.
+    if task.local_claim_id == payload.claim_id:
+        return {"claimed": True, "claim_id": payload.claim_id}
+
+    return {"claimed": False, "claim_id": task.local_claim_id}
+
+
+# ---------------------------------------------------------------------------
 # POST /api/hunt/local/tasks/{id}/events
 # ---------------------------------------------------------------------------
 
@@ -401,7 +458,16 @@ async def post_done(
             redis_client,
         )
 
-    # 2. Update the HuntTask + post the "✅ Task completed" system message
+    # 2. Clear the claim lock so a future reassignment (retry flow, etc.)
+    #    can start a fresh claim cycle across tabs.
+    await db.execute(
+        update(HuntTask)
+        .where(HuntTask.id == task.id)
+        .values(local_claim_id=None)
+    )
+    await db.commit()
+
+    # 3. Update the HuntTask + post the "✅ Task completed" system message
     #    — exactly what endpoint_caller does for remote agents. Keeps the
     #    board in sync and advances the queue to the next task for this agent.
     from api.services.endpoint_caller import _update_hunt_task

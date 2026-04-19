@@ -75,11 +75,50 @@ async function postDone(
   }
 }
 
+/** Per-tab identifier used to claim tasks. Same value for the whole tab lifetime so
+ *  the same tab reloading mid-execution can reclaim its own task without contention. */
+const TAB_CLAIM_ID =
+  (typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `tab-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+
+/**
+ * Try to atomically claim a task for this tab. Returns true on success.
+ * If another Akela tab claimed it first, returns false — caller should
+ * silently drop the event so we don't double-dispatch to the local agent.
+ */
+async function tryClaim(taskId: string, token: string): Promise<boolean> {
+  try {
+    const resp = await fetch(`${API_BASE}/api/hunt/local/tasks/${taskId}/claim`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ claim_id: TAB_CLAIM_ID }),
+    })
+    if (!resp.ok) {
+      // 404 (task disappeared) / 401 (stale token) / 500 — treat as "don't run here"
+      return false
+    }
+    const data = await resp.json()
+    return !!data?.claimed
+  } catch (err) {
+    console.warn('[LocalTaskWorker] /claim failed, skipping task:', err)
+    return false
+  }
+}
+
 /**
  * Call the user's local agent with A2A message/stream and relay its
  * SSE output back to Akela via /events + /done.
  */
 async function executeTask(evt: TaskAssignedEvent, token: string): Promise<void> {
+  // Claim lock: only one Akela tab runs the task even when the user has
+  // several open. Fixes #12 (duplicate responses from multi-tab race).
+  const claimed = await tryClaim(evt.task_id, token)
+  if (!claimed) {
+    console.info('[LocalTaskWorker] dropping', evt.task_id, '— claimed by another tab')
+    return
+  }
+
   const config = getLocalConfig(evt.agent_name)
   if (!config?.localEndpointUrl) {
     await postDone(evt.task_id, token, {
