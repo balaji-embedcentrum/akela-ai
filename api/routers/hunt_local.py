@@ -231,10 +231,17 @@ async def post_event(
         return {"status": "noop"}
 
     # We intentionally DON'T persist every delta as a DB Message — too chatty.
-    # The final text lands in Den via /done. Here we publish a lightweight
-    # ephemeral event so any open Den tab can show "alpha is typing…"-style
-    # progress if it wants to.
+    # The final text lands in Den via /done. Here we publish two
+    # lightweight ephemeral events:
+    #   1. agent_chunk — raw delta, available to any custom UI that wants
+    #      streaming text for local agents.
+    #   2. typing — the contract Den's existing chat SSE listener already
+    #      handles (Den.tsx:655). Showing "Local is typing…" with a 45s
+    #      auto-timeout. Because we re-emit this on every delta, the 45s
+    #      timer resets as long as the agent keeps streaming — bursty
+    #      silence inside one task won't drop the indicator.
     if room:
+        chat_channel = pubsub.chat_channel(str(current.id), room)
         chunk_event = {
             "type": "agent_chunk",
             "agent_id": str(agent.id),
@@ -245,9 +252,14 @@ async def post_event(
             "seq": payload.seq,
             "room": room,
         }
-        await pubsub.publish(
-            pubsub.chat_channel(str(current.id), room), chunk_event, redis_client
-        )
+        await pubsub.publish(chat_channel, chunk_event, redis_client)
+
+        typing_event = {
+            "type": "typing",
+            "agent_name": agent.name,
+            "room": room,
+        }
+        await pubsub.publish(chat_channel, typing_event, redis_client)
 
     return {"status": "ok"}
 
