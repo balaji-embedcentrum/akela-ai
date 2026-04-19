@@ -142,30 +142,37 @@ async function executeTask(evt: TaskAssignedEvent, token: string): Promise<void>
   }
 
   const contentType = resp.headers.get('content-type') || ''
-  const reader = resp.body?.getReader()
-  if (!reader) {
-    await postDone(evt.task_id, token, {
-      state: 'failed',
-      final_text: '',
-      error: 'Local agent returned no response body.',
-    })
-    return
-  }
-
-  const decoder = new TextDecoder()
-  let buffer = ''
-  let accumulated = ''
-  let terminalState: string | null = null
-  let lastProgressAt = 0
-  let seq = 0
 
   // Non-streaming fallback: local agent replied with a plain JSON-RPC
-  // response (because it doesn't implement message/stream). Parse the
-  // final artifact, post it, done.
+  // response (because it doesn't implement message/stream, or fell back
+  // to message/send, or returned a JSON-RPC method-not-found error).
+  // Read the full body ONCE via resp.text() and parse. We must NOT call
+  // resp.body.getReader() first — that locks the stream and would make
+  // the subsequent read throw "body is disturbed or locked".
   if (!contentType.includes('text/event-stream')) {
-    const bodyText = await new Response(resp.body as any).text()
+    let bodyText = ''
+    try {
+      bodyText = await resp.text()
+    } catch (err: any) {
+      await postDone(evt.task_id, token, {
+        state: 'failed',
+        final_text: '',
+        error: `Could not read local agent response: ${err?.message || err}`,
+      })
+      return
+    }
     try {
       const data = JSON.parse(bodyText)
+      // JSON-RPC error — adapter rejected message/stream (e.g. -32601).
+      if (data?.error) {
+        await postDone(evt.task_id, token, {
+          state: 'failed',
+          final_text: '',
+          error: `Local agent JSON-RPC error ${data.error.code}: ${data.error.message}`,
+        })
+        return
+      }
+      let accumulated = ''
       const artifacts = data?.result?.artifacts || []
       for (const a of artifacts) {
         for (const p of a.parts || []) {
@@ -187,6 +194,24 @@ async function executeTask(evt: TaskAssignedEvent, token: string): Promise<void>
     }
     return
   }
+
+  // Streaming path — only now do we read the body as a stream.
+  const reader = resp.body?.getReader()
+  if (!reader) {
+    await postDone(evt.task_id, token, {
+      state: 'failed',
+      final_text: '',
+      error: 'Local agent returned no response body.',
+    })
+    return
+  }
+
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let accumulated = ''
+  let terminalState: string | null = null
+  let lastProgressAt = 0
+  let seq = 0
 
   // Streaming path: parse A2A v0.4.x JSON-RPC envelopes from SSE.
   while (true) {
