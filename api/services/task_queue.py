@@ -148,6 +148,23 @@ async def dispatch_task(
     }
     await pubsub.publish(pubsub.chat_channel(orchestrator_id, room), dispatch_event, redis_client)
 
+    # For local agents: emit a 'typing' indicator immediately on dispatch.
+    # Without this, Den has a visible dead zone between the dispatch message
+    # and the first streaming artifact (which could be several seconds of
+    # LLM latency). The /events endpoint re-emits typing on every chunk to
+    # refresh Den.tsx:655's 45s auto-clear timer.
+    # Remote agents don't need this here — endpoint_caller emits chunks
+    # faster than the 45s timeout via its own streaming flow.
+    if agent.protocol == AgentProtocol.local:
+        typing_event = {
+            "type": "typing",
+            "agent_name": agent.name,
+            "room": room,
+        }
+        await pubsub.publish(
+            pubsub.chat_channel(orchestrator_id, room), typing_event, redis_client
+        )
+
     # Notify the agent via Redis (real-time) — include task_id so handler can update HuntTask.
     # Local agents are subscribed to via the browser-side SSE bridge; remote
     # agents are subscribed to by endpoint_caller on the "agent:..." channel.
