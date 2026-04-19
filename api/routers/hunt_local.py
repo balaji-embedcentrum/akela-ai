@@ -290,7 +290,7 @@ async def post_done(
             room=room,
             content=payload.final_text,
             mentions=[],
-            mention_type=MentionType.none,
+            mention_type=MentionType.normal,
         )
         db.add(resp_msg)
         await db.commit()
@@ -305,7 +305,7 @@ async def post_done(
                 "sender_name": agent.name,
                 "sender_role": "agent",
                 "content": payload.final_text,
-                "mention_type": "none",
+                "mention_type": "normal",
                 "mentions": [],
                 "room": room,
                 "created_at": resp_msg.created_at.strftime("%Y-%m-%dT%H:%M:%S") + "Z",
