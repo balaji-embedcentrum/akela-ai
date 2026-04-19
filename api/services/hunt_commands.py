@@ -379,9 +379,11 @@ async def _create_task(
             available = ", ".join(f"*{a.name}*" for a in all_agents[:5])
             return f"❌ Agent not found: **{agent_name}**. Available: {available or 'none'}", None
 
-        # Only A2A agents can receive task dispatch
-        if agent.protocol != AgentProtocol.a2a:
-            return f"❌ **{agent_name}** uses the `{agent.protocol.value}` protocol. Only A2A agents support task dispatch. Configure their endpoint as A2A in Pack settings.", None
+        # Only A2A / local agents can receive task dispatch.
+        # Local agents are dispatched to the user's browser via SSE and
+        # executed against the endpoint URL stored in browser localStorage.
+        if agent.protocol not in (AgentProtocol.a2a, AgentProtocol.local):
+            return f"❌ **{agent_name}** uses the `{agent.protocol.value}` protocol. Only A2A and local agents support task dispatch. Configure their endpoint as A2A (or Local) in Pack settings.", None
 
         # Validate agent is assigned to this project (if we're in a project room)
         if room_project_id:
