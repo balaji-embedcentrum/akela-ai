@@ -305,11 +305,19 @@ async def claim(
     # asyncpg + SQLAlchemy compile this as a single UPDATE ... WHERE ...,
     # so two concurrent tabs racing to claim will see one success and
     # one zero-row update without any extra locking.
+    #
+    # The status='in_progress' guard is defence-in-depth: a task that's
+    # already finished (done/blocked) must NEVER be claimed again, even
+    # if its local_claim_id happens to be NULL for any reason (historical
+    # rows pre-dating this column, a retry flow that clears it, etc.).
+    # Without this guard, a delayed second subscriber could reclaim a
+    # just-completed task and run the whole thing over.
     result = await db.execute(
         update(HuntTask)
         .where(
             HuntTask.id == task.id,
             HuntTask.local_claim_id.is_(None),
+            HuntTask.status == "in_progress",
         )
         .values(local_claim_id=payload.claim_id)
     )
@@ -458,18 +466,19 @@ async def post_done(
             redis_client,
         )
 
-    # 2. Clear the claim lock so a future reassignment (retry flow, etc.)
-    #    can start a fresh claim cycle across tabs.
-    await db.execute(
-        update(HuntTask)
-        .where(HuntTask.id == task.id)
-        .values(local_claim_id=None)
-    )
-    await db.commit()
-
-    # 3. Update the HuntTask + post the "✅ Task completed" system message
+    # 2. Update the HuntTask + post the "✅ Task completed" system message
     #    — exactly what endpoint_caller does for remote agents. Keeps the
     #    board in sync and advances the queue to the next task for this agent.
+    #
+    # Note: we intentionally do NOT clear local_claim_id here. Earlier
+    # versions did, under the reasoning that a future retry flow would
+    # want to re-claim. But clearing it opened a race window between
+    # "claim cleared" and "status flipped to done" where a delayed
+    # second subscriber could win a fresh claim and run the task again,
+    # producing a duplicate response. The claim now stays set until the
+    # task is explicitly retried/reassigned (to be implemented in #13),
+    # and the defence-in-depth status='in_progress' guard in /claim
+    # blocks reclaims of already-terminal tasks.
     from api.services.endpoint_caller import _update_hunt_task
 
     new_status = "done" if payload.state == "completed" else "blocked"
