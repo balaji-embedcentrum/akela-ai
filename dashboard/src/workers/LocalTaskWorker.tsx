@@ -25,7 +25,7 @@
 
 import { useEffect, useRef } from 'react'
 import { useStore } from '../store'
-import { getLocalConfig } from '../local-chat'
+import { getAllLocalConfigs, getLocalConfig } from '../local-chat'
 
 const API_BASE =
   import.meta.env.VITE_API_URL ||
@@ -292,7 +292,15 @@ export function LocalTaskWorker() {
 
     const connect = async () => {
       try {
-        const resp = await fetch(`${API_BASE}/api/hunt/local/subscribe`, {
+        // Pass every locally-configured agent name so the server knows
+        // which agents to mark online for this browser's session. Keys of
+        // `akela_local_agents` in localStorage are the agent names.
+        const configs = getAllLocalConfigs()
+        const agentsParam = Object.keys(configs)
+          .filter(name => !!configs[name]?.localEndpointUrl)
+          .join(',')
+        const qs = agentsParam ? `?agents=${encodeURIComponent(agentsParam)}` : ''
+        const resp = await fetch(`${API_BASE}/api/hunt/local/subscribe${qs}`, {
           headers: { Authorization: `Bearer ${token}` },
           signal: abort.signal,
         })
