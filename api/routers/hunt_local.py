@@ -282,9 +282,12 @@ async def post_done(
     # 1. Persist the final assistant response as a Message from the agent
     #    so the Den conversation shows the answer.
     if payload.final_text and room:
+        # Note: Message.agent_id is a String column (not UUID) — schema quirk.
+        # asyncpg rejects passing a UUID object directly; explicit str() is
+        # required to match what other writers in the codebase do.
         resp_msg = Message(
             orchestrator_id=current.id,
-            agent_id=agent.id,
+            agent_id=str(agent.id),
             sender_name=agent.name,
             sender_role="agent",
             room=room,
