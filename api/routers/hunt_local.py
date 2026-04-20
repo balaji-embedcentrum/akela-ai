@@ -429,6 +429,25 @@ async def post_done(
     """Mark a local-agent Hunt task as terminal and post its response to Den."""
     task, agent, room = await _load_owned_task(task_id, current.id, db)
 
+    # Idempotency guard. The same /done can arrive more than once:
+    #   * Traefik / reverse-proxy retry on a slow upstream response
+    #   * HTTP/2 or connection-pool re-send
+    #   * Browser network-stack retries on transient errors
+    # The worker reliably sends /done exactly once per executeTask run
+    # (verified via performance entries), but the server sometimes
+    # receives it twice — leading to a duplicate agent response message.
+    #
+    # If the task is no longer in_progress, a previous /done already
+    # wrote the Message, advanced the queue, and posted the system
+    # "Task completed" notification. Do nothing.
+    if task.status != "in_progress":
+        logger.info(
+            "[hunt-local] duplicate /done for %s (status=%s) — ignoring",
+            task.id,
+            task.status,
+        )
+        return {"status": "ok", "task_status": task.status, "duplicate": True}
+
     # 1. Persist the final assistant response as a Message from the agent
     #    so the Den conversation shows the answer.
     if payload.final_text and room:
