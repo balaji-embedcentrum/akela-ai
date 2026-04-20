@@ -365,6 +365,14 @@ async def post_event(
     """Forward a streamed artifact delta to Den so users see live progress."""
     task, agent, room = await _load_owned_task(task_id, current.id, db)
 
+    # Idempotency guard — same pattern as /done. A proxy layer (Traefik /
+    # HTTP connection pool) sometimes retries our POSTs, so /events can
+    # arrive AFTER the task already completed. Publishing typing/chunk
+    # events at that point causes Den to show "Local is typing…"
+    # phantoms that disappear 45s later with no response.
+    if task.status != "in_progress":
+        return {"status": "ignored", "reason": "task terminal"}
+
     if not (payload.artifact_text or payload.tool_call):
         return {"status": "noop"}
 
