@@ -1,4 +1,5 @@
 import asyncio
+import os
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -36,9 +37,17 @@ app = FastAPI(
     root_path_in_servers=False,
 )
 
+_cors_origin = os.getenv("CORS_ORIGIN", "")
+if not _cors_origin:
+    raise RuntimeError(
+        "CORS_ORIGIN environment variable is not set. "
+        "Set it to the full origin of your dashboard (e.g. https://your-domain.com). "
+        "See ADMIN_GUIDE.md for details."
+    )
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[_cors_origin],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

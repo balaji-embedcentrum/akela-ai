@@ -2,6 +2,10 @@ version: '3.9'
 # ============================================================
 # Akela — Local Development Docker Compose
 # For production, use docker-compose.prod.yml (Traefik + TLS).
+#
+# Setup:
+#   cp .env.example .env   # fill in all values — see ADMIN_GUIDE.md
+#   docker compose up --build
 # ============================================================
 
 services:
@@ -9,14 +13,15 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: akela
-      POSTGRES_USER: ${POSTGRES_USER:-akela}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-akela}
+      POSTGRES_USER: akela
+      # Strong local dev fallback — set POSTGRES_PASSWORD in .env for anything real
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme-local-dev-only}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-akela}"]
+      test: ["CMD-SHELL", "pg_isready -U akela"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -25,12 +30,17 @@ services:
 
   redis:
     image: redis:7-alpine
+    command: redis-server /usr/local/etc/redis/redis.conf
+    tmpfs:
+      - /data
+    volumes:
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    env_file:
+      - ./compose.dev.env
     ports:
       - "6379:6379"
-    volumes:
-      - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a $REDIS_PASSWORD ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -42,16 +52,15 @@ services:
       context: .
       dockerfile: api/Dockerfile
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-akela}:${POSTGRES_PASSWORD:-akela}@postgres:5432/akela
-      REDIS_URL: redis://redis:6379
-      SECRET_KEY: ${SECRET_KEY:-dev-secret-change-me}
-      ADMIN_USERNAME: ${ADMIN_USERNAME:-alpha}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-changeme}
-      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
-      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
-      GITHUB_REDIRECT_URI: ${GITHUB_REDIRECT_URI:-http://localhost:8200/akela-api/auth/github/callback}
+      DATABASE_URL: postgresql+asyncpg://akela:${POSTGRES_PASSWORD:-changeme-local-dev-only}@postgres:5432/akela
+      # REDIS_URL uses REDIS_PASSWORD from compose.dev.env (must match redis/redis.conf)
+      REDIS_URL: redis://default:${REDIS_PASSWORD}@redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-changeme-local-dev-only-change-in-prod}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:8201}
     ports:
       - "8200:8200"
+    env_file:
+      - ./compose.dev.env
     depends_on:
       postgres:
         condition: service_healthy
@@ -65,9 +74,11 @@ services:
       context: .
       dockerfile: worker/Dockerfile
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-akela}:${POSTGRES_PASSWORD:-akela}@postgres:5432/akela
-      REDIS_URL: redis://redis:6379
-      SECRET_KEY: ${SECRET_KEY:-dev-secret-change-me}
+      DATABASE_URL: postgresql+asyncpg://akela:${POSTGRES_PASSWORD:-changeme-local-dev-only}@postgres:5432/akela
+      REDIS_URL: redis://default:${REDIS_PASSWORD}@redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-changeme-local-dev-only-change-in-prod}
+    env_file:
+      - ./compose.dev.env
     depends_on:
       postgres:
         condition: service_healthy
