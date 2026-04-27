@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from api.db.session import get_db
 from api.models.orchestrator import Orchestrator
 from api.services.auth_service import (
-    generate_api_key, get_github_user, create_jwt,
+    generate_api_key, get_github_user, get_google_user, create_jwt,
     verify_admin_credentials
 )
 from api.dependencies import get_current_orchestrator
@@ -101,6 +101,62 @@ async def github_callback(code: str, db: AsyncSession = Depends(get_db)):
             name=user.get("name") or user.get("login", "Unknown"),
             username=user.get("login", ""),
             email=user.get("email"),
+            admin_api_key=generate_api_key("alpha"),
+        )
+        db.add(orch)
+        await db.commit()
+        await db.refresh(orch)
+
+    token = create_jwt({"orchestrator_id": str(orch.id), "role": "alpha"})
+    params = urlencode({
+        "token": token,
+        "orchestrator_id": str(orch.id),
+        "name": orch.name or "",
+        "username": orch.username or "",
+        "admin_api_key": orch.admin_api_key,
+    })
+    return RedirectResponse(url=f"/pack/login?{params}")
+
+
+# Google OAuth
+@router.get("/google")
+async def google_login():
+    from urllib.parse import urlencode
+    params = urlencode({
+        "client_id": settings.google_client_id,
+        "redirect_uri": settings.google_redirect_uri,
+        "response_type": "code",
+        "scope": "openid email profile",
+        "access_type": "online",
+        "prompt": "select_account",
+    })
+    return RedirectResponse(f"https://accounts.google.com/o/oauth2/v2/auth?{params}")
+
+
+@router.get("/google/callback")
+async def google_callback(code: str, db: AsyncSession = Depends(get_db)):
+    from urllib.parse import urlencode
+    try:
+        user = await get_google_user(code)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    google_id = str(user.get("sub", ""))
+    if not google_id:
+        raise HTTPException(status_code=400, detail="Google account missing identifier")
+
+    result = await db.execute(select(Orchestrator).where(Orchestrator.google_id == google_id))
+    orch = result.scalar_one_or_none()
+
+    if not orch:
+        email = user.get("email") or ""
+        # Derive a username — Google has no handle, so use the email local-part.
+        username = email.split("@", 1)[0] if email else f"google_{google_id[:8]}"
+        orch = Orchestrator(
+            google_id=google_id,
+            name=user.get("name") or username,
+            username=username,
+            email=email or None,
             admin_api_key=generate_api_key("alpha"),
         )
         db.add(orch)
