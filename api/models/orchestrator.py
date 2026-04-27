@@ -11,6 +11,7 @@ class Orchestrator(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     github_id: Mapped[str] = mapped_column(String, unique=True, nullable=True)
+    google_id: Mapped[str] = mapped_column(String, unique=True, nullable=True)
     username: Mapped[str] = mapped_column(String, unique=True, nullable=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
     email: Mapped[str] = mapped_column(String, nullable=True)

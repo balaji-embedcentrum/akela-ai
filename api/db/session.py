@@ -36,6 +36,9 @@ async def run_migrations():
     migrations = [
         # Phase 7: multi-protocol agent support
         "ALTER TABLE agents ADD COLUMN IF NOT EXISTS protocol VARCHAR NOT NULL DEFAULT 'openai'",
+        # Google OAuth: per-orchestrator Google identity
+        "ALTER TABLE orchestrators ADD COLUMN IF NOT EXISTS google_id VARCHAR",
+        "CREATE UNIQUE INDEX IF NOT EXISTS orchestrators_google_id_key ON orchestrators (google_id)",
     ]
     async with engine.begin() as conn:
         for sql in migrations:

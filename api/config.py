@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     github_client_secret: str = ""
     github_redirect_uri: str = "http://localhost:8200/akela-api/auth/github/callback"
 
+    # Google OAuth
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    google_redirect_uri: str = "http://localhost:8200/akela-api/auth/google/callback"
+
     api_host: str = "0.0.0.0"
     api_port: int = 8200
 
