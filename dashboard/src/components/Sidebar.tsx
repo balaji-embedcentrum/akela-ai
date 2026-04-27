@@ -5,7 +5,7 @@ import type { Project } from '../store'
 import { useDmNotifications } from '../hooks/useDmNotifications'
 import {
   LayoutDashboard, MessageSquare, Crosshair, Users,
-  Settings, LogOut, ExternalLink, ChevronLeft, ChevronRight,
+  Settings, LogOut, ChevronLeft, ChevronRight,
   ChevronDown, Plus, Menu, X,
 } from 'lucide-react'
 import api from '../api'
@@ -439,21 +439,6 @@ export function Sidebar() {
         </nav>
 
         {/* Bottom actions */}
-        <a
-          href="/"
-          title={collapsed ? 'Akela Host' : undefined}
-          style={{
-            display: 'flex', alignItems: 'center', gap: collapsed ? 0 : 8,
-            justifyContent: collapsed ? 'center' : 'flex-start',
-            padding: collapsed ? '11px 0' : '9px 16px',
-            textDecoration: 'none', color: 'var(--text-muted)',
-            fontSize: 13, borderTop: '1px solid var(--border)',
-          }}
-        >
-          <ExternalLink size={14} />
-          {!collapsed && 'Akela Host'}
-        </a>
-
         <button
           onClick={logout}
           title={collapsed ? 'Sign Out' : undefined}
@@ -463,6 +448,7 @@ export function Sidebar() {
             padding: collapsed ? '11px 0' : '9px 16px',
             border: 'none', background: 'transparent', color: 'var(--text-muted)',
             cursor: 'pointer', fontSize: 13, width: '100%',
+            borderTop: '1px solid var(--border)',
           }}
         >
           <LogOut size={14} />
