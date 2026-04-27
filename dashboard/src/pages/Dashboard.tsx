@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store'
 import type { Project, Agent } from '../store'
 import api from '../api'
@@ -138,6 +139,7 @@ function ProjectRow({
 
 export function Dashboard() {
   const { agents, setAgents, projects } = useStore()
+  const navigate = useNavigate()
   const [stats, setStats] = useState<Record<string, ProjectStat>>({})
   // projectAgentIds keyed by project.id
   const [projectAgents, setProjectAgents] = useState<Record<string, Set<string>>>({})
@@ -250,10 +252,18 @@ export function Dashboard() {
                 No agents yet. Go to The Pack to register one.
               </div>
             ) : agents.map((a, i) => (
-              <div key={a.id} style={{
-                display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
-                borderBottom: i < agents.length - 1 ? '1px solid var(--border)' : 'none',
-              }}>
+              <div
+                key={a.id}
+                onClick={() => navigate(`/chat/${a.name}`)}
+                title={`Open chat with ${a.display_name || a.name}`}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
+                  borderBottom: i < agents.length - 1 ? '1px solid var(--border)' : 'none',
+                  cursor: 'pointer', transition: 'background 0.15s',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-hover)' }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+              >
                 <div style={{
                   width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
                   background: a.status === 'online' ? 'var(--online)' : a.status === 'busy' ? 'var(--busy)' : 'var(--offline)',

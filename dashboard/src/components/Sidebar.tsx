@@ -177,11 +177,14 @@ function ProjectSwitcher({ collapsed }: { collapsed: boolean }) {
               onClick={() => setCreating(true)}
               style={{
                 display: 'flex', alignItems: 'center', gap: 7,
-                padding: '8px 12px', cursor: 'pointer', fontSize: 12,
-                color: 'var(--text-muted)', borderTop: '1px solid var(--border)',
+                padding: '8px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 600,
+                color: 'var(--text-primary)', borderTop: '1px solid var(--border)',
+                transition: 'background 0.15s',
               }}
-              onMouseEnter={e => e.currentTarget.style.color = 'var(--text-primary)'}
-              onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}
+              onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-hover)' }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+              onMouseDown={e => { e.currentTarget.style.background = 'var(--bg-elevated)' }}
+              onMouseUp={e => { e.currentTarget.style.background = 'var(--bg-hover)' }}
             >
               <Plus size={12} /> New Project
             </div>
