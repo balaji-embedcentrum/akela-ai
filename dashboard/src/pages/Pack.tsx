@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useStore } from '../store'
 import type { Agent } from '../store'
 import api from '../api'
-import { UserPlus, Trash2, RefreshCw, Edit2, Save, X, Zap } from 'lucide-react'
+import { UserPlus, Trash2, RefreshCw, Edit2, Save, X, Zap, Key, Copy, Check } from 'lucide-react'
 
 const rankColors: Record<string, string> = {
   alpha: 'var(--alpha)', beta: 'var(--beta)',
@@ -42,6 +42,10 @@ function AgentCard({ agent, onDelete, onUpdate, readOnly = false }: {
   const existingLocal = localAgentConfigs[agent.name]
   const [editLocalUrl, setEditLocalUrl] = useState(existingLocal?.localEndpointUrl || '')
   const [editLocalToken, setEditLocalToken] = useState(existingLocal?.localBearerToken || '')
+  // API key — only revealed after regenerate (existing keys can't be retrieved server-side)
+  const [revealedKey, setRevealedKey] = useState<string | null>(null)
+  const [regenerating, setRegenerating] = useState(false)
+  const [keyCopied, setKeyCopied] = useState(false)
 
   const handleDiscover = async () => {
     if (!editEndpoint.trim()) return
@@ -59,6 +63,20 @@ function AgentCard({ agent, onDelete, onUpdate, readOnly = false }: {
       alert(e.response?.data?.detail || 'Could not fetch Agent Card from endpoint')
     } finally {
       setDiscovering(false)
+    }
+  }
+
+  const handleRegenerate = async () => {
+    if (!confirm(`Regenerate API key for @${agent.name}?\n\nThe current key will stop working immediately. Any agent process using it will need to be updated with the new one.`)) return
+    setRegenerating(true)
+    try {
+      const r = await api.post(`/agents/${agent.id}/regenerate-key`)
+      setRevealedKey(r.data.api_key)
+      setKeyCopied(false)
+    } catch (e: any) {
+      alert(e.response?.data?.detail || 'Failed to regenerate API key')
+    } finally {
+      setRegenerating(false)
     }
   }
 
@@ -309,6 +327,66 @@ function AgentCard({ agent, onDelete, onUpdate, readOnly = false }: {
             )}
           </div>
 
+          {/* ── Agent API key (regenerate) ──────────────────────────── */}
+          <div style={{
+            marginTop: 12, padding: 12, borderRadius: 8,
+            background: 'rgba(96,165,250,0.04)',
+            border: '1px solid rgba(96,165,250,0.15)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Key size={11} style={{ color: 'var(--accent)' }} />
+                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)', letterSpacing: '0.06em' }}>
+                  AGENT API KEY
+                </div>
+              </div>
+              <button onClick={handleRegenerate} disabled={regenerating} style={{
+                padding: '4px 10px', background: 'rgba(96,165,250,0.1)',
+                border: '1px solid rgba(96,165,250,0.3)', borderRadius: 6,
+                color: 'var(--accent)', fontSize: 11, cursor: regenerating ? 'default' : 'pointer',
+                display: 'flex', alignItems: 'center', gap: 4, opacity: regenerating ? 0.6 : 1,
+              }}>
+                <RefreshCw size={11} style={{ animation: regenerating ? 'spin 0.8s linear infinite' : 'none' }} />
+                {regenerating ? 'Generating…' : (revealedKey ? 'Regenerate again' : 'Regenerate')}
+              </button>
+            </div>
+            {!revealedKey && (
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                The agent's <code style={{ color: 'var(--accent)' }}>akela_…</code> key is hidden — it is only shown once at registration. Click <strong>Regenerate</strong> to issue a new key (the old key stops working immediately).
+              </div>
+            )}
+            {revealedKey && (
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--success)', marginBottom: 6, lineHeight: 1.5 }}>
+                  ✅ New key generated. <strong>Copy it now</strong> — once you close this panel it cannot be retrieved again.
+                </div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <code style={{
+                    flex: 1, fontSize: 11, color: 'var(--accent)', background: 'var(--bg-elevated)',
+                    padding: '8px 10px', borderRadius: 6, wordBreak: 'break-all',
+                    border: '1px solid var(--border)',
+                  }}>
+                    {revealedKey}
+                  </code>
+                  <button onClick={() => {
+                    navigator.clipboard.writeText(revealedKey)
+                    setKeyCopied(true)
+                    setTimeout(() => setKeyCopied(false), 2000)
+                  }} style={{
+                    padding: '6px 10px', background: 'var(--bg-elevated)',
+                    border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer',
+                    color: keyCopied ? 'var(--success)' : 'var(--text-muted)',
+                  }}>
+                    {keyCopied ? <Check size={13} /> : <Copy size={13} />}
+                  </button>
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 6, fontStyle: 'italic' }}>
+                  Set on your agent host: <code>AKELA_API_KEY={revealedKey.slice(0, 14)}…</code>
+                </div>
+              </div>
+            )}
+          </div>
+
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 12 }}>
             <button onClick={handleSave} disabled={saving} style={{
               padding: '6px 16px', background: 'var(--accent)', border: 'none', borderRadius: 6,
@@ -397,6 +475,9 @@ export function Pack({ globalMode = false }: { globalMode?: boolean }) {
   const [model, setModel] = useState('')
   const [workspaceUrl, setWorkspaceUrl] = useState('')
   const [registered, setRegistered] = useState(false)
+  const [newAgentKey, setNewAgentKey] = useState<string | null>(null)
+  const [newAgentName, setNewAgentName] = useState<string>('')
+  const [keyCopied, setKeyCopied] = useState(false)
   const [loading, setLoading] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [discovering, setDiscovering] = useState(false)
@@ -404,7 +485,7 @@ export function Pack({ globalMode = false }: { globalMode?: boolean }) {
   const resetForm = () => {
     setName(''); setDisplayName(''); setEndpointUrl(''); setBearerToken(''); setSkills('')
     setRank('omega'); setProtocol('a2a'); setModel(''); setWorkspaceUrl('')
-    setRegistered(false); setShowAdd(false)
+    setRegistered(false); setNewAgentKey(null); setNewAgentName(''); setKeyCopied(false); setShowAdd(false)
   }
 
   const load = async () => {
@@ -435,7 +516,7 @@ const handleDiscoverNew = async () => {
     if (!name.trim()) return
     setLoading(true)
     try {
-      await api.post('/agents/register', {
+      const r = await api.post('/agents/register', {
         name: name.trim(),
         display_name: displayName.trim() || name.trim(),
         skills: skills.split(',').map(s => s.trim()).filter(Boolean),
@@ -449,6 +530,9 @@ const handleDiscoverNew = async () => {
           ...(protocol === 'a2a' ? { a2a_streaming: true } : {}),
         },
       })
+      setNewAgentKey(r.data?.api_key || null)
+      setNewAgentName(r.data?.name || name.trim())
+      setKeyCopied(false)
       setName(''); setDisplayName(''); setEndpointUrl(''); setBearerToken(''); setSkills('')
       setRank('omega'); setProtocol('a2a'); setModel(''); setWorkspaceUrl('')
       setRegistered(true)
@@ -697,12 +781,52 @@ const handleDiscoverNew = async () => {
 
           {registered && (
             <div style={{
-              padding: '12px 16px', background: 'rgba(76,175,80,0.1)',
+              padding: 16, background: 'rgba(76,175,80,0.06)',
               border: '1px solid var(--success)', borderRadius: 8, marginTop: 12,
             }}>
-              <div style={{ fontSize: 12, color: 'var(--success)', fontWeight: 700 }}>
-                ✅ Agent registered! It will appear online once its endpoint is reachable.
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <div style={{ fontSize: 13, color: 'var(--success)', fontWeight: 700 }}>
+                  ✅ Agent <code style={{ color: 'var(--success)' }}>@{newAgentName}</code> registered.
+                </div>
               </div>
+              {newAgentKey ? (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                    <Key size={11} style={{ color: 'var(--accent)' }} />
+                    <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)', letterSpacing: '0.06em' }}>
+                      AGENT API KEY — SHOWN ONCE
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+                    <code style={{
+                      flex: 1, fontSize: 12, color: 'var(--accent)', background: 'var(--bg-elevated)',
+                      padding: '8px 10px', borderRadius: 6, wordBreak: 'break-all',
+                      border: '1px solid var(--border)',
+                    }}>
+                      {newAgentKey}
+                    </code>
+                    <button onClick={() => {
+                      navigator.clipboard.writeText(newAgentKey)
+                      setKeyCopied(true)
+                      setTimeout(() => setKeyCopied(false), 2000)
+                    }} style={{
+                      padding: '6px 10px', background: 'var(--bg-elevated)',
+                      border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer',
+                      color: keyCopied ? 'var(--success)' : 'var(--text-muted)',
+                    }}>
+                      {keyCopied ? <Check size={13} /> : <Copy size={13} />}
+                    </button>
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                    Copy this key now — it cannot be retrieved later. If you lose it, regenerate from the agent's edit panel. On the agent host, set:<br />
+                    <code style={{ color: 'var(--accent)' }}>AKELA_API_KEY={newAgentKey.slice(0, 14)}…</code>
+                  </div>
+                </>
+              ) : (
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                  It will appear online once its endpoint is reachable.
+                </div>
+              )}
             </div>
           )}
         </div>
