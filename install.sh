@@ -10,17 +10,30 @@
 #
 #   sudo bash install.sh
 #
-# Required env (or you'll be prompted):
+# Modes:
+#   1. Fresh install  — no .env exists. Prompts for the few required
+#                       values; auto-generates strong secrets.
+#   2. Reuse existing — $AKELA_DIR/.env already there. Used as-is.
+#                       No prompts. Pass --regen-env to overwrite.
+#   3. Restore        — pass --env-file ./backup.env to seed from
+#                       a known-good .env (e.g. from a previous VPS).
+#                       Postgres data only decrypts with the matching
+#                       POSTGRES_PASSWORD, so for restores this is the
+#                       safe path.
+#
+# Required env (only on fresh install — ignored if .env exists):
 #   AKELA_DOMAIN       e.g. akela.example.com  (A record must point here)
 #   ACME_EMAIL         e.g. you@example.com    (for Let's Encrypt)
 #
-# Optional env:
+# Optional env (only on fresh install):
 #   ADMIN_USERNAME              default: alpha
 #   ADMIN_PASSWORD              default: auto-generated
 #   POSTGRES_PASSWORD           default: auto-generated
 #   SECRET_KEY                  default: auto-generated (openssl rand -hex 32)
 #   GITHUB_CLIENT_ID/SECRET     optional GitHub OAuth
 #   GOOGLE_CLIENT_ID/SECRET     optional Google OAuth
+#
+# Always optional:
 #   AKELA_REPO                  default: https://github.com/balaji-embedcentrum/akela-ai.git
 #   AKELA_BRANCH                default: main
 #   AKELA_DIR                   default: /opt/akela-ai
@@ -74,7 +87,55 @@ prompt_required() {
 rand_hex()    { openssl rand -hex "$1"; }
 rand_pass()   { openssl rand -base64 24 | tr -d '/+=' | cut -c1-24; }
 
-# --- 0. preflight ----------------------------------------------------------
+# Read a single KEY= line out of a (possibly root-owned) .env file.
+read_env_value() {
+  local key="$1" file="$2"
+  $SUDO grep -E "^${key}=" "$file" 2>/dev/null | tail -n1 | cut -d= -f2-
+}
+
+print_help() {
+  cat <<HLP
+Usage: install.sh [--env-file PATH] [--regen-env] [-h|--help]
+
+  --env-file PATH   Seed \$AKELA_DIR/.env from PATH (backs up any
+                    existing one). Use this to restore from a backup.
+  --regen-env       Ignore an existing \$AKELA_DIR/.env and prompt
+                    for fresh values. ⚠️  A new POSTGRES_PASSWORD
+                    will not match an existing Postgres volume.
+  -h, --help        Show this help.
+
+With no flags: if \$AKELA_DIR/.env exists, it's used as-is (no prompts).
+Otherwise, fresh install — you'll be asked for AKELA_DOMAIN and
+ACME_EMAIL; everything else is auto-generated.
+HLP
+}
+
+# --- 0. parse args ---------------------------------------------------------
+
+PROVIDED_ENV_FILE=""
+REGEN_ENV=false
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --env-file)
+      [ -n "${2-}" ] || die "--env-file requires a path"
+      PROVIDED_ENV_FILE="$2"
+      shift 2
+      ;;
+    --regen-env)
+      REGEN_ENV=true
+      shift
+      ;;
+    -h|--help)
+      print_help
+      exit 0
+      ;;
+    *)
+      die "Unknown argument: $1 (try --help)"
+      ;;
+  esac
+done
+
+# --- 1. preflight ----------------------------------------------------------
 
 require_root_or_sudo
 
@@ -84,29 +145,22 @@ if ! need_cmd openssl; then
   $SUDO apt-get install -y openssl
 fi
 
-# --- 1. collect config -----------------------------------------------------
-
-log "Collecting configuration..."
-
-prompt_required AKELA_DOMAIN "Public domain for Akela (e.g. akela.example.com)"
-prompt_required ACME_EMAIL   "Email for Let's Encrypt"
-
-prompt ADMIN_USERNAME    "Admin username"           "alpha"
-prompt ADMIN_PASSWORD    "Admin password (blank=auto)" ""
-prompt POSTGRES_PASSWORD "Postgres password (blank=auto)" ""
-prompt SECRET_KEY        "JWT secret key (blank=auto)" ""
-prompt GITHUB_CLIENT_ID     "GitHub OAuth Client ID (blank=skip)" ""
-prompt GITHUB_CLIENT_SECRET "GitHub OAuth Client Secret (blank=skip)" ""
-prompt GOOGLE_CLIENT_ID     "Google OAuth Client ID (blank=skip)" ""
-prompt GOOGLE_CLIENT_SECRET "Google OAuth Client Secret (blank=skip)" ""
-
-ADMIN_PASSWORD="${ADMIN_PASSWORD:-$(rand_pass)}"
-POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-$(rand_pass)}"
-SECRET_KEY="${SECRET_KEY:-$(rand_hex 32)}"
-
 AKELA_REPO="${AKELA_REPO:-https://github.com/balaji-embedcentrum/akela-ai.git}"
 AKELA_BRANCH="${AKELA_BRANCH:-main}"
 AKELA_DIR="${AKELA_DIR:-/opt/akela-ai}"
+
+# Pre-resolve PROVIDED_ENV_FILE to absolute (we'll cd later)
+if [ -n "$PROVIDED_ENV_FILE" ]; then
+  [ -f "$PROVIDED_ENV_FILE" ] || die "--env-file '$PROVIDED_ENV_FILE' not found"
+  PROVIDED_ENV_FILE="$(cd "$(dirname "$PROVIDED_ENV_FILE")" && pwd)/$(basename "$PROVIDED_ENV_FILE")"
+fi
+
+# Who should own $AKELA_DIR? When invoked under sudo, prefer SUDO_USER
+# so re-runs don't leave root-owned files that bite later git pulls.
+TARGET_USER="${SUDO_USER:-${USER:-}}"
+if [ -z "$TARGET_USER" ] || [ "$TARGET_USER" = "root" ]; then
+  TARGET_USER=""
+fi
 
 # --- 2. system packages ----------------------------------------------------
 
@@ -139,9 +193,9 @@ else
   log "Docker already installed: $(docker --version)"
 fi
 
-if [ "$(id -u)" -ne 0 ] && ! id -nG "$USER" | grep -qw docker; then
-  log "Adding $USER to docker group (re-login required to take effect)..."
-  $SUDO usermod -aG docker "$USER" || true
+if [ -n "$TARGET_USER" ] && ! id -nG "$TARGET_USER" | grep -qw docker; then
+  log "Adding $TARGET_USER to docker group (re-login required to take effect)..."
+  $SUDO usermod -aG docker "$TARGET_USER" || true
 fi
 
 # --- 4. firewall (best-effort, only if ufw is active) ----------------------
@@ -156,6 +210,7 @@ fi
 
 if [ -d "$AKELA_DIR/.git" ]; then
   log "Repo already at $AKELA_DIR — fetching latest..."
+  $SUDO git -C "$AKELA_DIR" config --global --add safe.directory "$AKELA_DIR" 2>/dev/null || true
   $SUDO git -C "$AKELA_DIR" fetch --all --prune
   $SUDO git -C "$AKELA_DIR" checkout "$AKELA_BRANCH"
   $SUDO git -C "$AKELA_DIR" pull --ff-only
@@ -165,23 +220,37 @@ else
   $SUDO git clone --branch "$AKELA_BRANCH" "$AKELA_REPO" "$AKELA_DIR"
 fi
 
-if [ "$(id -u)" -ne 0 ]; then
-  $SUDO chown -R "$USER":"$USER" "$AKELA_DIR" || true
+if [ -n "$TARGET_USER" ]; then
+  $SUDO chown -R "$TARGET_USER":"$TARGET_USER" "$AKELA_DIR" || true
 fi
 
 cd "$AKELA_DIR"
 
-# --- 6. write .env ---------------------------------------------------------
+# --- 6. .env handling ------------------------------------------------------
 
 ENV_FILE="$AKELA_DIR/.env"
-if [ -f "$ENV_FILE" ]; then
-  BACKUP="$ENV_FILE.bak.$(date +%s)"
-  log "Existing .env found, backing up to $BACKUP"
-  $SUDO cp "$ENV_FILE" "$BACKUP"
-fi
 
-log "Writing $ENV_FILE..."
-$SUDO tee "$ENV_FILE" >/dev/null <<EOF
+write_fresh_env() {
+  log "No usable .env — collecting configuration..."
+
+  prompt_required AKELA_DOMAIN "Public domain for Akela (e.g. akela.example.com)"
+  prompt_required ACME_EMAIL   "Email for Let's Encrypt"
+
+  prompt ADMIN_USERNAME    "Admin username"           "alpha"
+  prompt ADMIN_PASSWORD    "Admin password (blank=auto)" ""
+  prompt POSTGRES_PASSWORD "Postgres password (blank=auto)" ""
+  prompt SECRET_KEY        "JWT secret key (blank=auto)" ""
+  prompt GITHUB_CLIENT_ID     "GitHub OAuth Client ID (blank=skip)" ""
+  prompt GITHUB_CLIENT_SECRET "GitHub OAuth Client Secret (blank=skip)" ""
+  prompt GOOGLE_CLIENT_ID     "Google OAuth Client ID (blank=skip)" ""
+  prompt GOOGLE_CLIENT_SECRET "Google OAuth Client Secret (blank=skip)" ""
+
+  ADMIN_PASSWORD="${ADMIN_PASSWORD:-$(rand_pass)}"
+  POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-$(rand_pass)}"
+  SECRET_KEY="${SECRET_KEY:-$(rand_hex 32)}"
+
+  log "Writing $ENV_FILE..."
+  $SUDO tee "$ENV_FILE" >/dev/null <<EOF
 # Generated by install.sh on $(date -Iseconds)
 POSTGRES_USER=akela
 POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
@@ -205,7 +274,40 @@ VAPID_PUBLIC_KEY=
 VAPID_PRIVATE_KEY=
 VAPID_SUBJECT=mailto:${ACME_EMAIL}
 EOF
+}
+
+backup_existing_env() {
+  if [ -f "$ENV_FILE" ]; then
+    local backup="$ENV_FILE.bak.$(date +%s)"
+    log "Backing up existing .env → $backup"
+    $SUDO cp "$ENV_FILE" "$backup"
+  fi
+}
+
+if [ -n "$PROVIDED_ENV_FILE" ]; then
+  log "Seeding $ENV_FILE from $PROVIDED_ENV_FILE"
+  backup_existing_env
+  $SUDO cp "$PROVIDED_ENV_FILE" "$ENV_FILE"
+elif [ -f "$ENV_FILE" ] && [ "$REGEN_ENV" != true ]; then
+  log "Using existing $ENV_FILE (pass --regen-env to overwrite)"
+elif [ -f "$ENV_FILE" ] && [ "$REGEN_ENV" = true ]; then
+  backup_existing_env
+  write_fresh_env
+else
+  write_fresh_env
+fi
+
 $SUDO chmod 600 "$ENV_FILE"
+if [ -n "$TARGET_USER" ]; then
+  $SUDO chown "$TARGET_USER":"$TARGET_USER" "$ENV_FILE" || true
+fi
+
+# Pull values back out of the (possibly pre-existing) .env for the summary.
+SUMMARY_DOMAIN="$(read_env_value AKELA_DOMAIN "$ENV_FILE")"
+SUMMARY_USER="$(read_env_value ADMIN_USERNAME "$ENV_FILE")"
+SUMMARY_PASS="$(read_env_value ADMIN_PASSWORD "$ENV_FILE")"
+
+[ -n "$SUMMARY_DOMAIN" ] || die "AKELA_DOMAIN missing from $ENV_FILE"
 
 # --- 7. traefik acme.json --------------------------------------------------
 
@@ -217,7 +319,7 @@ $SUDO chmod 600 "$AKELA_DIR/traefik/acme.json"
 # --- 8. build & launch -----------------------------------------------------
 
 DC="docker compose -f docker-compose.prod.yml"
-if [ "$(id -u)" -ne 0 ] && ! id -nG "$USER" | grep -qw docker; then
+if [ -n "$TARGET_USER" ] && ! id -nG "$TARGET_USER" | grep -qw docker; then
   DC="$SUDO $DC"
 fi
 
@@ -236,15 +338,15 @@ cat <<SUMMARY
 ============================================================
  Akela is up.
 
-   Landing:    https://${AKELA_DOMAIN}
-   Dashboard:  https://${AKELA_DOMAIN}/pack
-   API docs:   https://${AKELA_DOMAIN}/akela-api/docs
+   Landing:    https://${SUMMARY_DOMAIN}
+   Dashboard:  https://${SUMMARY_DOMAIN}/pack
+   API docs:   https://${SUMMARY_DOMAIN}/akela-api/docs
 
  Login:
-   user:       ${ADMIN_USERNAME}
-   password:   ${ADMIN_PASSWORD}
+   user:       ${SUMMARY_USER}
+   password:   ${SUMMARY_PASS}
 
- Generated secrets are stored in:
+ Secrets are stored in:
    ${ENV_FILE}   (mode 600 — back this up somewhere safe)
 
  Useful commands (from ${AKELA_DIR}):
@@ -254,7 +356,7 @@ cat <<SUMMARY
    docker compose -f docker-compose.prod.yml down
 
  Notes:
-  * DNS A record for ${AKELA_DOMAIN} must point to this server's
+  * DNS A record for ${SUMMARY_DOMAIN} must point to this server's
     public IP, or Let's Encrypt cert issuance will fail.
   * First HTTPS request triggers cert provisioning (a few seconds).
   * To enable Web Push, generate VAPID keys with:
