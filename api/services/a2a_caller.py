@@ -303,8 +303,8 @@ def _build_message(content: str, history: list[dict] | None, attachments: list[d
             role = "User" if turn["role"] == "user" else "Assistant"
             history_lines.append(f"{role}: {turn['content']}")
         context = "\n".join(history_lines)
-        parts.append({"type": "text", "text": f"[Prior conversation]\n{context}\n[End prior conversation]\n\n"})
-    parts.append({"type": "text", "text": content})
+        parts.append({"kind": "text", "text": f"[Prior conversation]\n{context}\n[End prior conversation]\n\n"})
+    parts.append({"kind": "text", "text": content})
     for att in (attachments or []):
         mime = att.get("type", "application/octet-stream")
         b64 = att.get("base64", "")
@@ -320,7 +320,7 @@ def _build_message(content: str, history: list[dict] | None, attachments: list[d
                 text_content = _b64.b64decode(b64).decode("utf-8", errors="replace")
             except Exception:
                 text_content = b64
-            parts.append({"type": "text", "text": f"\n[Attachment: {name}]\n{text_content}"})
+            parts.append({"kind": "text", "text": f"\n[Attachment: {name}]\n{text_content}"})
     return {
         "messageId": str(uuid.uuid4()),
         "role": "user",
