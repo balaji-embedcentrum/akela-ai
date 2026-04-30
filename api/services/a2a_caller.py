@@ -101,12 +101,34 @@ async def call_a2a(
     orchestrator_id: str = "",
     hunt_task_id: str = "",
     attachments: list[dict] | None = None,
+    *,
+    context_id: str | None = None,
+    embed_history: bool = True,
 ) -> tuple[str, dict, str, str]:
     """
     Send a task to an A2A agent via message/stream (streaming) or message/send.
 
     Returns (full_text, meta, stream_id, final_state).
     final_state: "completed" | "failed" | "working" | "unknown"
+
+    Mode flags (keyword-only, both default to legacy text-stuffing
+    behavior so Den/Hunt callers see no change):
+
+    ``context_id``
+        When set, included as ``message.contextId`` in the outbound A2A
+        envelope. Spec-compliant A2A v1.0 agents key conversation memory
+        to this id. Used by individual-chat callers to let the agent
+        own its multi-turn memory; ``None`` for orchestrator flows
+        where the orchestrator owns the canonical history.
+
+    ``embed_history``
+        ``True`` (default) preserves the existing behavior of stuffing
+        prior turns into a ``[Prior conversation]`` block in the
+        message body — required for Den (per-agent bubble filtering)
+        and Hunt (orchestrator picks different agents per turn).
+        ``False`` skips the in-band stuff so the agent reads its own
+        prior turns from its session store. Pair with ``context_id``
+        for individual chat.
     """
     endpoint_url = agent.endpoint_url.rstrip("/")
     bearer_token = agent.bearer_token or ""
@@ -130,12 +152,14 @@ async def call_a2a(
             endpoint_url, content, room, agent.name,
             stream_id, redis_client, history, orchestrator_id, headers,
             attachments=attachments,
+            context_id=context_id, embed_history=embed_history,
         )
     else:
         full_text, usage, final_state = await _call_send(
             endpoint_url, content, room, agent.name,
             stream_id, redis_client, history, orchestrator_id, headers,
             attachments=attachments,
+            context_id=context_id, embed_history=embed_history,
         )
 
     meta = BaseAgentCaller.build_meta(usage, start_ts, soul)
@@ -158,9 +182,15 @@ async def _call_stream(
     orchestrator_id: str,
     headers: dict,
     attachments: list[dict] | None = None,
+    *,
+    context_id: str | None = None,
+    embed_history: bool = True,
 ) -> tuple[str, dict, str]:
     payload = _build_jsonrpc("message/stream", {
-        "message": _build_message(content, history, attachments),
+        "message": _build_message(
+            content, history, attachments,
+            context_id=context_id, embed_history=embed_history,
+        ),
     })
 
     accumulated = ""
@@ -234,6 +264,7 @@ async def _call_stream(
         text, usage, state = await _call_send(
             endpoint_url, content, room, agent_name,
             stream_id, redis_client, history, orchestrator_id, headers,
+            context_id=context_id, embed_history=embed_history,
         )
         return text, usage, state, []
 
@@ -253,9 +284,15 @@ async def _call_send(
     orchestrator_id: str,
     headers: dict,
     attachments: list[dict] | None = None,
+    *,
+    context_id: str | None = None,
+    embed_history: bool = True,
 ) -> tuple[str, dict, str]:
     payload = _build_jsonrpc("message/send", {
-        "message": _build_message(content, history, attachments),
+        "message": _build_message(
+            content, history, attachments,
+            context_id=context_id, embed_history=embed_history,
+        ),
     })
 
     try:
@@ -295,9 +332,34 @@ def _build_jsonrpc(method: str, params: dict) -> dict:
     }
 
 
-def _build_message(content: str, history: list[dict] | None, attachments: list[dict] | None = None) -> dict:
+def _build_message(
+    content: str,
+    history: list[dict] | None,
+    attachments: list[dict] | None = None,
+    *,
+    context_id: str | None = None,
+    embed_history: bool = True,
+) -> dict:
+    """Build an A2A v1.0 message object.
+
+    The ``embed_history`` flag controls whether prior turns are stuffed
+    into the message body as a ``[Prior conversation]`` block:
+
+    * ``True`` (default): Den/Hunt — Akela owns the canonical history,
+      filters per-agent (Den's bubble) or picks different agents per
+      turn (Hunt). Each call carries the relevant slice in-band.
+    * ``False``: individual chat — agent owns its memory via its session
+      store keyed on ``context_id``. ``history`` is still accepted but
+      not embedded; pass ``[]`` or ``None`` to skip the local query.
+
+    The ``context_id`` flag, when set, is included as
+    ``message.contextId`` per A2A v1.0. Spec-compliant agents key
+    persistent conversation memory to this id. Required for the agent
+    to load its own history when ``embed_history=False``; harmless
+    otherwise.
+    """
     parts = []
-    if history:
+    if embed_history and history:
         history_lines = []
         for turn in history:
             role = "User" if turn["role"] == "user" else "Assistant"
@@ -321,11 +383,14 @@ def _build_message(content: str, history: list[dict] | None, attachments: list[d
             except Exception:
                 text_content = b64
             parts.append({"kind": "text", "text": f"\n[Attachment: {name}]\n{text_content}"})
-    return {
+    msg: dict = {
         "messageId": str(uuid.uuid4()),
         "role": "user",
         "parts": parts,
     }
+    if context_id:
+        msg["contextId"] = context_id
+    return msg
 
 
 def _extract_text_from_task(task: dict) -> str:

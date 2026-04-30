@@ -394,12 +394,30 @@ async def handle_agent_notify(
         json.dumps({"type": "typing", "agent_name": agent.name, "room": room}),
     )
 
+    # Identify individual-chat rooms (created by api/routers/conversations.py
+    # as ``chat-<uuid12>``). Den project rooms (``proj-*``) and the default
+    # group channel (``general``) keep the orchestrator-owned history model.
+    # Meeting rooms are detected by ``meeting_id`` and never get history.
+    # Hunt rooms always carry ``hunt_task_id`` and are also orchestrator-driven.
+    is_individual_chat = (
+        room.startswith("chat-")
+        and not meeting_id
+        and not hunt_task_id
+    )
+
     # Build history for any non-meeting room — DMs and project/group rooms
     # both benefit from context. Meetings are one-shot broadcast prompts and
     # intentionally get no prior context.
     history = None
     if not meeting_id:
         history = await build_history(room, agent.name, db)
+
+    # Per-(room, agent) stable id. Lets the agent's session store key
+    # multi-turn memory to this conversation. Namespaced with ``akela:``
+    # so it can't collide with thread ids minted by other A2A clients
+    # (e.g. Vertex's ``google:<sub>`` falling back via the agent's
+    # principal-id chain).
+    context_id = f"akela:{room}:{agent.name}" if is_individual_chat else None
 
     full_text = ""
     meta = {}
@@ -414,6 +432,13 @@ async def handle_agent_notify(
             full_text, meta, stream_id, final_a2a_state = await call_a2a(
                 agent, content, room, redis_client, history, orchestrator_id,
                 hunt_task_id=hunt_task_id, attachments=attachments,
+                # Individual chat: agent owns its memory via session store
+                # keyed on context_id. Den/Hunt: leave history embedded
+                # in-band (per-agent bubble filter / orchestrator picks
+                # different agents per turn — both require the caller to
+                # control what each agent sees).
+                context_id=context_id,
+                embed_history=not is_individual_chat,
             )
         else:
             # openai-compatible (Hermes gateway, LiteLLM, etc.)
