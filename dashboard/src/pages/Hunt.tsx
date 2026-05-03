@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { Plus, X, List, LayoutGrid, RefreshCw } from 'lucide-react'
+import { HelpButton } from '../components/HelpDrawer'
 import api from '../api'
 import { useStore } from '../store'
 
@@ -143,6 +144,7 @@ export function Hunt() {
         background: 'var(--bg-surface)', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0,
       }}>
         <span style={{ fontWeight: 700, fontSize: 15, marginRight: 4 }}>The Hunt</span>
+        <HelpButton pageId="hunt" />
         {activeProject && <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 500 }}>{activeProject.name}</span>}
 
         {huntProject && (
