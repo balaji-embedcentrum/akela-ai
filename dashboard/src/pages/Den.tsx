@@ -3,6 +3,7 @@ import { useStore } from '../store'
 import type { Message, Conversation, Workspace } from '../store'
 import api from '../api'
 import { Radio, AtSign, Plus, Folder, Trash2, GripVertical, MessageSquare, FolderPlus } from 'lucide-react'
+import { HelpButton } from '../components/HelpDrawer'
 import { MessageContent } from '../components/MessageContent'
 import { MessageActions } from '../components/MessageActions'
 import { ChatInput } from '../components/ChatInput'
@@ -542,22 +543,28 @@ export function Den() {
   const [hashHints, setHashHints] = useState<HashHint[]>([])
   const [activeCommand, setActiveCommand] = useState<typeof ALL_COMMANDS[0] | null>(null)
 
+  // Ref so SSE handler (bound to [activeRoom]) always invokes the latest refetch
+  const refreshHuntItemsRef = useRef<() => void>(() => {})
   useEffect(() => {
-    if (!activeProject) { setHuntEpics([]); setHuntStories([]); setHuntTasks([]); return }
-    api.get(`/hunt/projects?akela_project_id=${activeProject.id}`).then(r => {
-      if (r.data.length > 0) {
-        const hpId = r.data[0].id
-        Promise.all([
-          api.get(`/hunt/projects/${hpId}/epics`),
-          api.get(`/hunt/projects/${hpId}/stories`),
-          api.get(`/hunt/tasks?project_id=${hpId}`),
-        ]).then(([e, s, t]) => {
-          setHuntEpics(e.data)
-          setHuntStories(s.data)
-          setHuntTasks(t.data)
-        }).catch(console.error)
-      }
-    }).catch(console.error)
+    const refresh = () => {
+      if (!activeProject) { setHuntEpics([]); setHuntStories([]); setHuntTasks([]); return }
+      api.get(`/hunt/projects?akela_project_id=${activeProject.id}`).then(r => {
+        if (r.data.length > 0) {
+          const hpId = r.data[0].id
+          Promise.all([
+            api.get(`/hunt/projects/${hpId}/epics`),
+            api.get(`/hunt/projects/${hpId}/stories`),
+            api.get(`/hunt/tasks?project_id=${hpId}`),
+          ]).then(([e, s, t]) => {
+            setHuntEpics(e.data)
+            setHuntStories(s.data)
+            setHuntTasks(t.data)
+          }).catch(console.error)
+        }
+      }).catch(console.error)
+    }
+    refreshHuntItemsRef.current = refresh
+    refresh()
   }, [activeProject?.id])
 
   // Load messages for current room — cancel stale fetches when room changes
@@ -604,6 +611,11 @@ export function Den() {
           if (data.type === 'system' && typeof data.content === 'string' &&
             /task (completed|blocked|timed out|queued|done)/i.test(data.content)) {
             notifyTaskUpdate()
+          }
+          // If a hunt item was created via slash command, refresh the # autocomplete lists
+          if (data.type === 'system' && typeof data.content === 'string' &&
+            /\*\*(Epic|Story|Task|Subtask) created:\*\*/i.test(data.content)) {
+            refreshHuntItemsRef.current()
           }
           // Attach any accumulated tool steps to this message
           setActiveToolSteps(prev => {
@@ -1016,6 +1028,9 @@ export function Den() {
           <div>
             <div style={{ fontWeight: 700, fontSize: 15 }}>{roomLabel}</div>
             <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{roomSub}</div>
+          </div>
+          <div style={{ marginLeft: 'auto' }}>
+            <HelpButton pageId="den" />
           </div>
         </div>
 

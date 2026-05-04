@@ -4,6 +4,7 @@ import { useStore } from '../store'
 import type { Message } from '../store'
 import api from '../api'
 import { ArrowLeft, Bot } from 'lucide-react'
+import { HelpButton } from '../components/HelpDrawer'
 import { MessageContent } from '../components/MessageContent'
 import { MessageActions } from '../components/MessageActions'
 import { ChatInput } from '../components/ChatInput'
@@ -400,6 +401,9 @@ export function AgentChat() {
           <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
             {agent?.status === 'online' ? 'Online' : 'Offline'} · {agent?.rank?.toUpperCase() || 'OMEGA'} · Private Chat
           </div>
+        </div>
+        <div style={{ marginLeft: 'auto' }}>
+          <HelpButton pageId="agentchat" />
         </div>
       </div>
 

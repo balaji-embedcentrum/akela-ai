@@ -3,6 +3,7 @@ import { useStore } from '../store'
 import type { Agent } from '../store'
 import api from '../api'
 import { UserPlus, Trash2, RefreshCw, Edit2, Save, X, Zap, Key, Copy, Check } from 'lucide-react'
+import { HelpButton } from '../components/HelpDrawer'
 
 const rankColors: Record<string, string> = {
   alpha: 'var(--alpha)', beta: 'var(--beta)',
@@ -474,10 +475,6 @@ export function Pack({ globalMode = false }: { globalMode?: boolean }) {
   const [protocol, setProtocol] = useState('a2a')
   const [model, setModel] = useState('')
   const [workspaceUrl, setWorkspaceUrl] = useState('')
-  const [registered, setRegistered] = useState(false)
-  const [newAgentKey, setNewAgentKey] = useState<string | null>(null)
-  const [newAgentName, setNewAgentName] = useState<string>('')
-  const [keyCopied, setKeyCopied] = useState(false)
   const [loading, setLoading] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [discovering, setDiscovering] = useState(false)
@@ -485,7 +482,7 @@ export function Pack({ globalMode = false }: { globalMode?: boolean }) {
   const resetForm = () => {
     setName(''); setDisplayName(''); setEndpointUrl(''); setBearerToken(''); setSkills('')
     setRank('omega'); setProtocol('a2a'); setModel(''); setWorkspaceUrl('')
-    setRegistered(false); setNewAgentKey(null); setNewAgentName(''); setKeyCopied(false); setShowAdd(false)
+    setShowAdd(false)
   }
 
   const load = async () => {
@@ -516,7 +513,7 @@ const handleDiscoverNew = async () => {
     if (!name.trim()) return
     setLoading(true)
     try {
-      const r = await api.post('/agents/register', {
+      await api.post('/agents/register', {
         name: name.trim(),
         display_name: displayName.trim() || name.trim(),
         skills: skills.split(',').map(s => s.trim()).filter(Boolean),
@@ -530,12 +527,7 @@ const handleDiscoverNew = async () => {
           ...(protocol === 'a2a' ? { a2a_streaming: true } : {}),
         },
       })
-      setNewAgentKey(r.data?.api_key || null)
-      setNewAgentName(r.data?.name || name.trim())
-      setKeyCopied(false)
-      setName(''); setDisplayName(''); setEndpointUrl(''); setBearerToken(''); setSkills('')
-      setRank('omega'); setProtocol('a2a'); setModel(''); setWorkspaceUrl('')
-      setRegistered(true)
+      resetForm()
       load()
     } catch(e: any) {
       alert(e.response?.data?.detail || 'Failed to register agent')
@@ -569,7 +561,10 @@ const handleDiscoverNew = async () => {
     <div style={{ padding: 28, overflowY: 'auto', height: '100%' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 4 }}>The Pack</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+            <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>The Pack</h1>
+            <HelpButton pageId="pack" />
+          </div>
           <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>
             {globalMode
               ? `${agents.length} agents · ${online.length} online`
@@ -779,56 +774,6 @@ const handleDiscoverNew = async () => {
             </button>
           </div>
 
-          {registered && (
-            <div style={{
-              padding: 16, background: 'rgba(76,175,80,0.06)',
-              border: '1px solid var(--success)', borderRadius: 8, marginTop: 12,
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                <div style={{ fontSize: 13, color: 'var(--success)', fontWeight: 700 }}>
-                  ✅ Agent <code style={{ color: 'var(--success)' }}>@{newAgentName}</code> registered.
-                </div>
-              </div>
-              {newAgentKey ? (
-                <>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                    <Key size={11} style={{ color: 'var(--accent)' }} />
-                    <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)', letterSpacing: '0.06em' }}>
-                      AGENT API KEY — SHOWN ONCE
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
-                    <code style={{
-                      flex: 1, fontSize: 12, color: 'var(--accent)', background: 'var(--bg-elevated)',
-                      padding: '8px 10px', borderRadius: 6, wordBreak: 'break-all',
-                      border: '1px solid var(--border)',
-                    }}>
-                      {newAgentKey}
-                    </code>
-                    <button onClick={() => {
-                      navigator.clipboard.writeText(newAgentKey)
-                      setKeyCopied(true)
-                      setTimeout(() => setKeyCopied(false), 2000)
-                    }} style={{
-                      padding: '6px 10px', background: 'var(--bg-elevated)',
-                      border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer',
-                      color: keyCopied ? 'var(--success)' : 'var(--text-muted)',
-                    }}>
-                      {keyCopied ? <Check size={13} /> : <Copy size={13} />}
-                    </button>
-                  </div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                    Copy this key now — it cannot be retrieved later. If you lose it, regenerate from the agent's edit panel. On the agent host, set:<br />
-                    <code style={{ color: 'var(--accent)' }}>AKELA_API_KEY={newAgentKey.slice(0, 14)}…</code>
-                  </div>
-                </>
-              ) : (
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                  It will appear online once its endpoint is reachable.
-                </div>
-              )}
-            </div>
-          )}
         </div>
       )}
 

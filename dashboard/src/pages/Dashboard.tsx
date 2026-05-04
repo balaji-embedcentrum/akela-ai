@@ -4,6 +4,7 @@ import { useStore } from '../store'
 import type { Project, Agent } from '../store'
 import api from '../api'
 import { CheckCircle, Clock, Plus } from 'lucide-react'
+import { HelpButton } from '../components/HelpDrawer'
 
 const rankColors: Record<string, string> = {
   alpha: 'var(--alpha)', beta: 'var(--beta)', delta: 'var(--delta)', omega: 'var(--omega)',
@@ -210,7 +211,10 @@ export function Dashboard() {
 
   return (
     <div style={{ padding: 28, overflowY: 'auto', height: '100%' }}>
-      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 6 }}>Dashboard</h1>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Dashboard</h1>
+        <HelpButton pageId="dashboard" />
+      </div>
       <p style={{ color: 'var(--text-muted)', marginBottom: 24, fontSize: 14 }}>
         Pack overview · all projects
       </p>

@@ -1,6 +1,7 @@
 import { useStore } from '../store'
 import type { Project, Agent } from '../store'
 import { Copy, Check, Save, Trash2, Bell, BellOff } from 'lucide-react'
+import { HelpButton } from '../components/HelpDrawer'
 import { useState, useEffect } from 'react'
 import api from '../api'
 import {
@@ -380,7 +381,10 @@ export function Settings() {
 
   return (
     <div style={{ padding: 28, overflowY: 'auto', height: '100%', maxWidth: 700 }}>
-      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 6 }}>Settings</h1>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Settings</h1>
+        <HelpButton pageId="settings" />
+      </div>
       <p style={{ color: 'var(--text-muted)', marginBottom: 28, fontSize: 14 }}>
         Manage your pack configuration
       </p>
@@ -447,76 +451,6 @@ export function Settings() {
         </div>
       </div>
 
-      {/* How to configure agents */}
-      <div style={{
-        background: 'var(--bg-surface)', border: '1px solid var(--border)',
-        borderRadius: 12, padding: 24, marginBottom: 20,
-      }}>
-        <h2 style={{ fontSize: 15, fontWeight: 600, marginBottom: 16 }}>
-          🐺 How to Configure an Agent
-        </h2>
-        <ol style={{ paddingLeft: 20, color: 'var(--text-secondary)', fontSize: 14, lineHeight: 2 }}>
-          <li>Go to <strong style={{ color: 'var(--text-primary)' }}>The Pack</strong> → click <strong style={{ color: 'var(--alpha)' }}>Add Agent</strong></li>
-          <li>Enter the agent name and skills (comma-separated)</li>
-          <li>Copy the generated API key <em>(shown once only)</em></li>
-          <li>In your agent code, set:</li>
-        </ol>
-        <pre style={{
-          background: 'var(--bg-elevated)', padding: 16, borderRadius: 8,
-          fontSize: 12, color: 'var(--text-primary)', overflow: 'auto',
-          marginTop: 12, lineHeight: 1.6,
-        }}>{`AKELA_API_KEY=akela_your_key_here
-AKELA_API_URL=http://your-server:8200
-
-# In HTTP requests:
-Authorization: Bearer akela_your_key_here
-# OR
-X-API-Key: akela_your_key_here`}</pre>
-
-        <div style={{
-          marginTop: 16, padding: '12px 16px', background: 'var(--accent-dim)',
-          border: '1px solid var(--accent)', borderRadius: 8,
-          fontSize: 13, color: 'var(--text-secondary)',
-        }}>
-          💡 Agent must send <code style={{ color: 'var(--accent)' }}>PUT /agents/{"{id}"}/heartbeat</code> every 30s to appear online.
-        </div>
-      </div>
-
-      {/* API reference */}
-      <div style={{
-        background: 'var(--bg-surface)', border: '1px solid var(--border)',
-        borderRadius: 12, padding: 24,
-      }}>
-        <h2 style={{ fontSize: 15, fontWeight: 600, marginBottom: 16 }}>📖 Quick API Reference</h2>
-        <pre style={{
-          background: 'var(--bg-elevated)', padding: 16, borderRadius: 8,
-          fontSize: 12, color: 'var(--text-primary)', overflow: 'auto', lineHeight: 1.8,
-        }}>{`# Register agent (use admin API key)
-POST /agents/register
-Headers: Authorization: Bearer <admin_key>
-Body: {"name": "MyBot", "skills": ["coding"]}
-
-# Agent heartbeat
-PUT /agents/{id}/heartbeat
-Headers: Authorization: Bearer <agent_key>
-
-# Post message to Den
-POST /chat/messages
-Headers: Authorization: Bearer <agent_key>
-Body: {"room": "general", "content": "@all Hello pack!"}
-
-# Get assigned tasks (Hunt)
-GET /hunt/tasks?project_id=<id>
-Headers: Authorization: Bearer <agent_key>
-
-# Update task status (Hunt)
-PUT /hunt/tasks/{id}/status
-Body: {"status": "done"}
-
-# SSE real-time stream
-GET /chat/subscribe?room=general
-Headers: Authorization: Bearer <agent_key>`}</pre>
-      </div>
     </div>
   )
 }
